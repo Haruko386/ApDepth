@@ -61,7 +61,7 @@ paper and inference code (this repository).
 
 The inference code was tested on:
 
-- Ubuntu 22.04 LTS, Python 3.10.12,  CUDA 11.7, GeForce RTX 3090 (pip)
+- Ubuntu 22.04 LTS, Python 3.12.9,  CUDA 11.8, GeForce RTX 4090 & GeForce RTX 5080 (pip)
 
 ### 🪧 A Note for Windows users
 
@@ -76,28 +76,13 @@ We recommend running the code in WSL2:
 Clone the repository (requires git):
 
 ```bash
-git clone https://github.com/prs-eth/Marigold.git
-cd Marigold
+git clone https://github.com/Haruko386/ApDepth.git
+cd ApDepth
 ```
 
 ### 💻 Dependencies
 
-We provide several ways to install the dependencies.
-
-1. **Using [Mamba](https://github.com/mamba-org/mamba)**, which can installed together with [Miniforge3](https://github.com/conda-forge/miniforge?tab=readme-ov-file#miniforge3). 
-
-    Windows users: Install the Linux version into the WSL.
-
-    After the installation, Miniforge needs to be activated first: `source /home/$USER/miniforge3/bin/activate`.
-
-    Create the environment and install dependencies into it:
-
-    ```bash
-    mamba env create -n marigold --file environment.yaml
-    conda activate marigold
-    ```
-
-2. **Using pip:** 
+ **Using pip:** 
     Alternatively, create a Python native virtual environment and install dependencies into it:
 
     ```bash
