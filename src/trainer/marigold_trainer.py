@@ -720,7 +720,7 @@ class MarigoldTrainer:
         self.model.unet.load_state_dict(
             torch.load(_model_path, map_location=self.device)
         )
-        self.dinov2_encoder.load_state_dict(checkpoint["dinov2_encoder"])
+        # self.dinov2_encoder.load_state_dict(checkpoint["dinov2_encoder"])
         self.model.unet.to(self.device)
         logging.info(f"UNet parameters are loaded from {_model_path}")
 

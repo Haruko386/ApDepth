@@ -172,7 +172,8 @@ if "__main__" == __name__:
             logging.warning("MPS is not available. Running on CPU will be slow.")
     else:
         if torch.cuda.is_available():
-            device = torch.device("cuda")
+            device = torch.device("cuda")  #如果只测试可行性的话，改成cpu就行
+            # device = torch.device("cpu")
         else:
             device = torch.device("cpu")
             logging.warning("CUDA is not available. Running on CPU will be slow.")
