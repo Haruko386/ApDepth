@@ -37,8 +37,6 @@ from torch.nn.parameter import Parameter
 from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
-import torch.nn as nn
-import torch.nn.functional as F
 from tqdm import tqdm
 from PIL import Image
 
@@ -53,10 +51,6 @@ from src.util.multi_res_noise import multi_res_noise_like
 from src.util.alignment import align_depth_least_square
 from src.util.seeding import generate_seed_sequence
 
-from src.util.seeding import generate_seed_sequence
-from src.util.build_mlp import build_mlp_
-from torchvision.transforms import Normalize
-from external_encoder.dinov2.dinov2 import DINOv2
 
 class MarigoldTrainer:
     def __init__(
@@ -86,19 +80,6 @@ class MarigoldTrainer:
         self.val_loaders: List[DataLoader] = val_dataloaders
         self.vis_loaders: List[DataLoader] = vis_dataloaders
         self.accumulation_steps: int = accumulation_steps
-
-        # Initialize DINOv2 encoder
-        self.dinov2_encoder = DINOv2(model_name='vitl').to(device)
-        dinov2_encoder_dict = self.dinov2_encoder.state_dict()
-        pretrained_ckpt_dict = torch.load('checkpoints/depth_anything_v2_vitl.pth', map_location='cpu')
-        pretrained_dict = {k.replace('pretrained.', ''): v for k, v in pretrained_ckpt_dict.items() if k.replace('pretrained.', '') in dinov2_encoder_dict}
-        self.dinov2_encoder.load_state_dict(pretrained_dict)
-        del self.dinov2_encoder.head
-        self.dinov2_encoder.head = torch.nn.Identity()
-        self.dinov2_encoder.eval()
-
-        # ImageNet normalization
-        self.normalize = Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
 
         # Adapt input layers
         if 8 != self.model.unet.config["in_channels"]:
@@ -185,27 +166,6 @@ class MarigoldTrainer:
         self.in_evaluation = False
         self.global_seed_sequence: List = []  # consistent global seed sequence, used to seed random generator, to ensure consistency when resuming
 
-    # def _replace_unet_conv_in(self):
-    #     # replace the first layer to accept 8 in_channels
-    #     _weight = self.model.unet.conv_in.weight.clone()  # [320, 4, 3, 3]
-    #     _bias = self.model.unet.conv_in.bias.clone()  # [320]
-    #     _weight = _weight.repeat((1, 2, 1, 1))  # Keep selected channel(s)
-    #     # half the activation magnitude
-    #     _weight *= 0.5
-    #     # new conv_in channel
-    #     _n_convin_out_channel = self.model.unet.conv_in.out_channels
-    #     _new_conv_in = Conv2d(
-    #         8, _n_convin_out_channel, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)
-    #     )
-    #     _new_conv_in.weight = Parameter(_weight)
-    #     _new_conv_in.bias = Parameter(_bias)
-    #     self.model.unet.conv_in = _new_conv_in
-    #     logging.info("Unet conv_in layer is replaced")
-    #     # replace config
-    #     self.model.unet.config["in_channels"] = 8
-    #     logging.info("Unet config is updated")
-    #     return
-
     def _replace_unet_conv_in(self):
         # replace the first layer to accept 8 in_channels
         _weight = self.model.unet.conv_in.weight.clone()  # [320, 4, 3, 3]
@@ -232,6 +192,7 @@ class MarigoldTrainer:
 
         device = self.device
         self.model.to(device)
+
         if self.in_evaluation:
             logging.info(
                 "Last evaluation was not finished, will do evaluation before continue training."
@@ -240,7 +201,7 @@ class MarigoldTrainer:
 
         self.train_metrics.reset()
         accumulated_step = 0
-        
+
         for epoch in range(self.epoch, self.max_epoch + 1):
             self.epoch = epoch
             logging.debug(f"epoch: {self.epoch}")
@@ -274,38 +235,10 @@ class MarigoldTrainer:
                     raise NotImplementedError
 
                 batch_size = rgb.shape[0]
-                # 这里开始改动
+
                 with torch.no_grad():
-                    # edge_map = self.edge_extractor(rgb) 
-                    # edge_stacked = edge_map.repeat(1, 3, 1, 1)           # [B,3,H,W]
-                    # edge_latent = self.model.encode_rgb(edge_stacked)    # [B,4,h,w]
-
-                    # # Encode image
-                    # rgb_latent = self.model.encode_rgb(rgb)  # [B, 4, h, w]
-
-                    # Normalize RGB image for DINOv2
-                    rgb_normalized = self.normalize(rgb)
-
-                    # Resize image to make it divisible by patch size
-                    patch_size = 14  # DINOv2 的 patch 大小
-                    new_height = (rgb_normalized.shape[2] // patch_size) * patch_size
-                    new_width = (rgb_normalized.shape[3] // patch_size) * patch_size
-                    rgb_resized = F.interpolate(rgb_normalized, size=(new_height, new_width), mode='bicubic', align_corners=False)
-
-                    # Extract DINOv2 features
-                    with torch.no_grad():
-                        dinov2_features = self.dinov2_encoder.forward_features(rgb_resized)['x_norm_patchtokens']  # [B, N, C]
-
-                    # Reshape DINOv2 features to match latent space dimensions
-                    B, N, C = dinov2_features.shape
-                    patch_grid_height = rgb_resized.shape[2] // 14  # 输入图像高度除以 patch 大小
-                    patch_grid_width = rgb_resized.shape[3] // 14   # 输入图像宽度除以 patch 大小
-                    dinov2_features = dinov2_features.permute(0, 2, 1).reshape(B, C, patch_grid_height, patch_grid_width)  # [B, C, h, w]
-
-                    # Reduce channel dimension from 1536 to 4
-                    channel_reducer = nn.Conv2d(in_channels=C, out_channels=4, kernel_size=1).to(self.device)
-                    dinov2_features_reduced = channel_reducer(dinov2_features)  # [B, 4, h, w]
-
+                    # Encode image
+                    rgb_latent = self.model.encode_rgb(rgb)  # [B, 4, h, w]
                     # Encode GT depth
                     gt_depth_latent = self.encode_depth(
                         depth_gt_for_latent
@@ -345,22 +278,14 @@ class MarigoldTrainer:
                     gt_depth_latent, noise, timesteps
                 )  # [B, 4, h, w]
 
-                # Resize dinov2_features_reduced to match noisy_latents
-                dinov2_features_resized = F.interpolate(
-                    dinov2_features_reduced, size=noisy_latents.shape[2:], mode='bilinear', align_corners=False
-                )
-
-                # Text embedding (你是？)
+                # Text embedding
                 text_embed = self.empty_text_embed.to(device).repeat(
                     (batch_size, 1, 1)
                 )  # [B, 77, 1024]
 
-                # cat_latents_full = torch.cat([rgb_latent, edge_latent, noisy_latents], dim=1)
-                cat_latents_full = torch.cat([dinov2_features_resized, noisy_latents], dim=1)
-
                 # Concat rgb and depth latents
                 cat_latents = torch.cat(
-                    [dinov2_features_resized, noisy_latents], dim=1
+                    [rgb_latent, noisy_latents], dim=1
                 )  # [B, 8, h, w]
                 cat_latents = cat_latents.float()
 
@@ -696,7 +621,6 @@ class MarigoldTrainer:
                 "best_metric": self.best_metric,
                 "in_evaluation": self.in_evaluation,
                 "global_seed_sequence": self.global_seed_sequence,
-                "dinov2_encoder": self.dinov2_encoder.state_dict(),
             }
             train_state_path = os.path.join(ckpt_dir, "trainer.ckpt")
             torch.save(state, train_state_path)
@@ -720,7 +644,6 @@ class MarigoldTrainer:
         self.model.unet.load_state_dict(
             torch.load(_model_path, map_location=self.device)
         )
-        # self.dinov2_encoder.load_state_dict(checkpoint["dinov2_encoder"])
         self.model.unet.to(self.device)
         logging.info(f"UNet parameters are loaded from {_model_path}")
 

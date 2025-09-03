@@ -24,8 +24,6 @@ from typing import Dict, Optional, Union
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
@@ -49,27 +47,6 @@ from .util.image_util import (
     get_tv_resample_method,
     resize_max_res,
 )
-
-from src.util.build_mlp import build_mlp_
-from torchvision.transforms import Normalize
-from external_encoder.dinov2.dinov2 import DINOv2
-
-# add
-import random
-
-# Pyramid nosie from 
-#   https://wandb.ai/johnowhitaker/multires_noise/reports/Multi-Resolution-Noise-for-Diffusion-Model-Training--VmlldzozNjYyOTU2?s=31
-def pyramid_noise_like(x, discount=0.9):
-    b, c, w, h = x.shape 
-    u = torch.nn.Upsample(size=(w, h), mode='bilinear')
-    noise = torch.randn_like(x)
-    for i in range(10):
-        r = random.random()*2+2  
-        w, h = max(1, int(w/(r**i))), max(1, int(h/(r**i)))
-        noise += u(torch.randn(b, c, w, h).to(x)) * discount**i
-        if w==1 or h==1: 
-            break 
-    return noise / noise.std()
 
 
 class MarigoldDepthOutput(BaseOutput):
@@ -263,9 +240,6 @@ class MarigoldPipeline(DiffusionPipeline):
                 resample_method=resample_method,
             )
 
-        # ImageNet normalization
-        self.normalize = Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
-
         # Normalize rgb values
         rgb_norm: torch.Tensor = rgb / 255.0 * 2.0 - 1.0  #  [0, 255] -> [-1, 1]
         rgb_norm = rgb_norm.to(self.dtype)
@@ -287,21 +261,6 @@ class MarigoldPipeline(DiffusionPipeline):
         single_rgb_loader = DataLoader(
             single_rgb_dataset, batch_size=_bs, shuffle=False
         )
-
-        deveice = device = torch.device("cuda") #测试可行性时用cpu，正常用情况把这行注释掉
-
-        # Initialize DINOv2 encoder
-        self.dinov2_encoder = DINOv2(model_name='vitl').to(device)
-        dinov2_encoder_dict = self.dinov2_encoder.state_dict()
-        pretrained_ckpt_dict = torch.load('checkpoints/depth_anything_v2_vitl.pth', map_location='cpu')
-        pretrained_dict = {k.replace('pretrained.', ''): v for k, v in pretrained_ckpt_dict.items() if k.replace('pretrained.', '') in dinov2_encoder_dict}
-        self.dinov2_encoder.load_state_dict(pretrained_dict)
-        del self.dinov2_encoder.head
-        self.dinov2_encoder.head = torch.nn.Identity()
-        self.dinov2_encoder.eval()
-
-        # ImageNet normalization
-        self.normalize = Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
 
         # Predict depth maps (batched)
         depth_pred_ls = []
@@ -437,43 +396,12 @@ class MarigoldPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps  # [T]
 
-        # # Encode image
-        # rgb_latent = self.encode_rgb(rgb_in)
-
-        # # Initial depth map (noise)
-        # depth_latent = torch.randn(
-        #     rgb_latent.shape,
-        #     device=device,
-        #     dtype=self.dtype,
-        #     generator=generator,
-        # )  # [B, 4, h, w]
-
-        # Normalize RGB image for DINOv2
-        rgb_normalized = self.normalize(rgb_in)
-
-        # Resize image to make it divisible by patch size
-        patch_size = 14  # DINOv2 的 patch 大小
-        new_height = (rgb_normalized.shape[2] // patch_size) * patch_size
-        new_width = (rgb_normalized.shape[3] // patch_size) * patch_size
-        rgb_resized = F.interpolate(rgb_normalized, size=(new_height, new_width), mode='bicubic', align_corners=False)
-
-        # Extract DINOv2 features
-        with torch.no_grad():
-            dinov2_features = self.dinov2_encoder.forward_features(rgb_resized)['x_norm_patchtokens']  # [B, N, C]
-
-        # Reshape DINOv2 features to match latent space dimensions
-        B, N, C = dinov2_features.shape
-        patch_grid_height = rgb_resized.shape[2] // 14  # 输入图像高度除以 patch 大小
-        patch_grid_width = rgb_resized.shape[3] // 14   # 输入图像宽度除以 patch 大小
-        dinov2_features = dinov2_features.permute(0, 2, 1).reshape(B, C, patch_grid_height, patch_grid_width)  # [B, C, h, w]
-
-        # Reduce channel dimension from 1536 to 4
-        channel_reducer = nn.Conv2d(in_channels=C, out_channels=4, kernel_size=1).to(self.device)
-        dinov2_features_reduced = channel_reducer(dinov2_features)  # [B, 4, h, w]
+        # Encode image
+        rgb_latent = self.encode_rgb(rgb_in)
 
         # Initial depth map (noise)
         depth_latent = torch.randn(
-            dinov2_features_reduced.shape,
+            rgb_latent.shape,
             device=device,
             dtype=self.dtype,
             generator=generator,
@@ -483,7 +411,7 @@ class MarigoldPipeline(DiffusionPipeline):
         if self.empty_text_embed is None:
             self.encode_empty_text()
         batch_empty_text_embed = self.empty_text_embed.repeat(
-            (dinov2_features_reduced.shape[0], 1, 1)
+            (rgb_latent.shape[0], 1, 1)
         ).to(device)  # [B, 2, 1024]
 
         # Denoising loop
@@ -499,7 +427,7 @@ class MarigoldPipeline(DiffusionPipeline):
 
         for i, t in iterable:
             unet_input = torch.cat(
-                [dinov2_features_reduced, depth_latent], dim=1
+                [rgb_latent, depth_latent], dim=1
             )  # this order is important
 
             # predict the noise residual
