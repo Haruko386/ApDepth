@@ -39,7 +39,7 @@ trainer:
     pretrained_path: stable-diffusion-2
   mixed_precision: fp16
   init_seed: 2024  # use null to train w/o seeding
-  save_period: 500
+  save_period: 1000
   backup_period: 2000
   validation_period: 30000
   visualization_period: 40000

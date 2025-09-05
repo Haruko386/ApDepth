@@ -37,6 +37,8 @@ from torch.nn.parameter import Parameter
 from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
+import torch.nn as nn
+import torch.nn.functional as F
 from tqdm import tqdm
 from PIL import Image
 
@@ -51,6 +53,7 @@ from src.util.multi_res_noise import multi_res_noise_like
 from src.util.alignment import align_depth_least_square
 from src.util.seeding import generate_seed_sequence
 
+from src.util.seeding import generate_seed_sequence
 
 class MarigoldTrainer:
     def __init__(
@@ -80,6 +83,10 @@ class MarigoldTrainer:
         self.val_loaders: List[DataLoader] = val_dataloaders
         self.vis_loaders: List[DataLoader] = vis_dataloaders
         self.accumulation_steps: int = accumulation_steps
+
+        # 将超参数定义为可学习参数
+        self.rgb_latent_scale_factor = nn.Parameter(torch.tensor(0.18215, dtype=torch.float32))
+        self.depth_latent_scale_factor = nn.Parameter(torch.tensor(0.18215, dtype=torch.float32))
 
         # Adapt input layers
         if 8 != self.model.unet.config["in_channels"]:
@@ -201,7 +208,7 @@ class MarigoldTrainer:
 
         self.train_metrics.reset()
         accumulated_step = 0
-
+        
         for epoch in range(self.epoch, self.max_epoch + 1):
             self.epoch = epoch
             logging.debug(f"epoch: {self.epoch}")
@@ -235,10 +242,11 @@ class MarigoldTrainer:
                     raise NotImplementedError
 
                 batch_size = rgb.shape[0]
-
+                # 这里开始改动
                 with torch.no_grad():
                     # Encode image
                     rgb_latent = self.model.encode_rgb(rgb)  # [B, 4, h, w]
+
                     # Encode GT depth
                     gt_depth_latent = self.encode_depth(
                         depth_gt_for_latent
@@ -278,7 +286,7 @@ class MarigoldTrainer:
                     gt_depth_latent, noise, timesteps
                 )  # [B, 4, h, w]
 
-                # Text embedding
+                # Text embedding (你是？)
                 text_embed = self.empty_text_embed.to(device).repeat(
                     (batch_size, 1, 1)
                 )  # [B, 77, 1024]

@@ -25,12 +25,16 @@ from glob import glob
 
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from PIL import Image
 from tqdm.auto import tqdm
 
 from marigold import MarigoldPipeline
 
 EXTENSION_LIST = [".jpg", ".jpeg", ".png"]
+
+from torchvision import transforms
 
 
 if "__main__" == __name__:
@@ -233,7 +237,7 @@ if "__main__" == __name__:
         for rgb_path in tqdm(rgb_filename_list, desc="Estimating depth", leave=True):
             # Read input image
             input_image = Image.open(rgb_path)
-
+            input_tensor = transforms.ToTensor()(input_image).unsqueeze(0).to(device)  # [1, 3, H, W]
             # Random number generator
             if seed is None:
                 generator = None

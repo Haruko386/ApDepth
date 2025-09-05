@@ -24,6 +24,8 @@ from typing import Dict, Optional, Union
 
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
@@ -271,7 +273,7 @@ class MarigoldPipeline(DiffusionPipeline):
         else:
             iterable = single_rgb_loader
         for batch in iterable:
-            (batched_img,) = batch
+            (batched_img,) = batch # here the image is still around 0-1
             depth_pred_raw = self.single_infer(
                 rgb_in=batched_img,
                 num_inference_steps=denoising_steps,
