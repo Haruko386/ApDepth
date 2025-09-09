@@ -45,10 +45,11 @@ from diffusers.models.embeddings import (
     Timesteps,
 )
 from diffusers.models.modeling_utils import ModelMixin
-from depthmaster.modules.unet_2d_blocks import (
+from marigold.modules.unet_2d_blocks import (
     get_down_block,
     get_mid_block,
     get_up_block,
+    BlockFE,
 )
 
 
@@ -406,6 +407,8 @@ class UNet2DConditionModel(
             attention_head_dim=attention_head_dim[-1],
             dropout=dropout,
         )
+
+        self.fftblock = BlockFE()
 
         # count how many layers upsample the images
         self.num_upsamplers = 0
@@ -1269,6 +1272,8 @@ class UNet2DConditionModel(
 
         feat_64 = sample
 
+        # fe transform
+        sample = self.fftblock(sample)
 
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):

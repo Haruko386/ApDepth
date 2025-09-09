@@ -31,8 +31,9 @@ from diffusers import (
     DDIMScheduler,
     DiffusionPipeline,
     LCMScheduler,
-    UNet2DConditionModel,
+    # UNet2DConditionModel,
 )
+from marigold.modules.unet_2d_condition import UNet2DConditionModel
 from diffusers.utils import BaseOutput
 from PIL import Image
 from torch.utils.data import DataLoader, TensorDataset

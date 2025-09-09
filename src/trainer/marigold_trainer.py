@@ -84,10 +84,6 @@ class MarigoldTrainer:
         self.vis_loaders: List[DataLoader] = vis_dataloaders
         self.accumulation_steps: int = accumulation_steps
 
-        # 将超参数定义为可学习参数
-        self.rgb_latent_scale_factor = nn.Parameter(torch.tensor(0.18215, dtype=torch.float32))
-        self.depth_latent_scale_factor = nn.Parameter(torch.tensor(0.18215, dtype=torch.float32))
-
         # Adapt input layers
         if 8 != self.model.unet.config["in_channels"]:
             self._replace_unet_conv_in()
@@ -246,7 +242,6 @@ class MarigoldTrainer:
                 with torch.no_grad():
                     # Encode image
                     rgb_latent = self.model.encode_rgb(rgb)  # [B, 4, h, w]
-
                     # Encode GT depth
                     gt_depth_latent = self.encode_depth(
                         depth_gt_for_latent
