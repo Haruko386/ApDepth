@@ -19,7 +19,7 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 
 We present Marigold, a diffusion model, and associated fine-tuning protocol for monocular depth estimation. Its core principle is to leverage the rich visual knowledge stored in modern generative image models. Our model, derived from Stable Diffusion and fine-tuned with synthetic data, can zero-shot transfer to unseen data, offering state-of-the-art monocular depth estimation results.
 
-![teaser](doc/cover.jpg)
+![cover](doc/cover.jpg)
 
 ## 📢 News
 2025-08-10: Trying to make some optimizations in Feature Expression<br>
