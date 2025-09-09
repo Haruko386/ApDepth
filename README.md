@@ -17,7 +17,7 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 [Haruko386](https://haruko386.github.io/),
 [Shuai Yuan](https://syjz.teacher.360eol.com/teacherBasic/preview?teacherId=23776)
 
-We present Marigold, a diffusion model, and associated fine-tuning protocol for monocular depth estimation. Its core principle is to leverage the rich visual knowledge stored in modern generative image models. Our model, derived from Stable Diffusion and fine-tuned with synthetic data, can zero-shot transfer to unseen data, offering state-of-the-art monocular depth estimation results.
+>We present **ApDepth**, a diffusion model, and associated fine-tuning protocol for monocular depth estimation. Based on Marigold, Its core innovation lies in addressing the deficiency of diffusion models in feature representation capability. Our model followed Marigold, derived from Stable Diffusion and fine-tuned with synthetic data: Hypersim and VKitti, achieved ideal results in object edge refinement.
 
 ![cover](doc/cover.jpg)
 
@@ -241,8 +241,8 @@ Please refer to [this](CONTRIBUTING.md) instruction.
 
 
 ## 🎓 Citation
-
-Please cite our paper:
+Waitting for publishing⏱️
+<!-- Please cite our paper:
 
 ```bibtex
 @InProceedings{ke2023repurposing,
@@ -251,7 +251,7 @@ Please cite our paper:
       booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
       year={2024}
 }
-```
+``` -->
 
 ## Acknowledgements
 
