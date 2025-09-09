@@ -1,14 +1,12 @@
-# Marigold: Repurposing Diffusion-Based Image Generators for Monocular Depth Estimation
+# ApDepth: Aiming for Precise Monocular Depth Estimation Based on Diffusion Models
 
-**CVPR 2024 (Oral, Best Paper Award Candidate)**
+This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVPR 2024 Best Paper: [**Repurposing Diffusion-Based Image Generators for Monocular Depth Estimation**](https://arxiv.org/abs/2312.02145)
 
-This repository represents the official implementation of the paper titled "Repurposing Diffusion-Based Image Generators for Monocular Depth Estimation".
-
-[![Website](doc/badges/badge-website.svg)](https://marigoldmonodepth.github.io)
+<!-- [![Website](doc/badges/badge-website.svg)](https://marigoldmonodepth.github.io)
 [![Paper](https://img.shields.io/badge/arXiv-PDF-b31b1b)](https://arxiv.org/abs/2312.02145)
 [![Hugging Face (LCM) Space](https://img.shields.io/badge/🤗%20Hugging%20Face%20(LCM)-Space-yellow)](https://huggingface.co/spaces/prs-eth/marigold-lcm)
 [![Hugging Face (LCM) Model](https://img.shields.io/badge/🤗%20Hugging%20Face%20(LCM)-Model-green)](https://huggingface.co/prs-eth/marigold-lcm-v1-0)
-[![Open In Colab](doc/badges/badge-colab.svg)](https://colab.research.google.com/drive/12G8reD13DdpMie5ZQlaFNo2WCGeNUH-u?usp=sharing)
+[![Open In Colab](doc/badges/badge-colab.svg)](https://colab.research.google.com/drive/12G8reD13DdpMie5ZQlaFNo2WCGeNUH-u?usp=sharing) -->
 [![License](https://img.shields.io/badge/License-Apache--2.0-929292)](https://www.apache.org/licenses/LICENSE-2.0)
 <!-- [![Hugging Face Model](https://img.shields.io/badge/🤗%20Hugging%20Face-Model-green)](https://huggingface.co/prs-eth/marigold-v1-0) -->
 <!-- [![Website](https://img.shields.io/badge/Project-Website-1081c2)](https://arxiv.org/abs/2312.02145) -->
@@ -16,28 +14,16 @@ This repository represents the official implementation of the paper titled "Repu
 <!-- [![HF Space](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-blue)]() -->
 <!-- [![Docker](doc/badges/badge-docker.svg)]() -->
 
-[Bingxin Ke](http://www.kebingxin.com/),
-[Anton Obukhov](https://www.obukhov.ai/),
-[Shengyu Huang](https://shengyuh.github.io/),
-[Nando Metzger](https://nandometzger.github.io/),
-[Rodrigo Caye Daudt](https://rcdaudt.github.io/),
-[Konrad Schindler](https://scholar.google.com/citations?user=FZuNgqIAAAAJ&hl=en )
+[Haruko386](https://haruko386.github.io/),
+[Shuai Yuan](https://syjz.teacher.360eol.com/teacherBasic/preview?teacherId=23776)
 
 We present Marigold, a diffusion model, and associated fine-tuning protocol for monocular depth estimation. Its core principle is to leverage the rich visual knowledge stored in modern generative image models. Our model, derived from Stable Diffusion and fine-tuned with synthetic data, can zero-shot transfer to unseen data, offering state-of-the-art monocular depth estimation results.
 
-![teaser](doc/teaser_collage_transparant.png)
+![teaser](doc/cover.jpg)
 
 ## 📢 News
-2024-05-28: Training code is released.<br>
-2024-03-23: Added [LCM v1.0](https://huggingface.co/prs-eth/marigold-lcm-v1-0) for faster inference - try it out at <a href="https://huggingface.co/spaces/prs-eth/marigold-lcm"><img src="https://img.shields.io/badge/🤗%20Hugging%20Face%20(LCM)-Space-yellow" height="16"></a><br>
-2024-03-04: Accepted to CVPR 2024. <br>
-2023-12-22: Contributed to Diffusers [community pipeline](https://github.com/huggingface/diffusers/tree/main/examples/community#marigold-depth-estimation). <br>
-2023-12-19: Updated [license](LICENSE.txt) to Apache License, Version 2.0.<br>
-2023-12-08: Added
-<a href="https://huggingface.co/spaces/toshas/marigold"><img src="https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow" height="16"></a> - try it out with your images for free!<br>
-2023-12-05: Added <a href="https://colab.research.google.com/drive/12G8reD13DdpMie5ZQlaFNo2WCGeNUH-u?usp=sharing"><img src="doc/badges/badge-colab.svg" height="16"></a> - dive deeper into our inference pipeline!<br>
-2023-12-04: Added <a href="https://arxiv.org/abs/2312.02145"><img src="https://img.shields.io/badge/arXiv-PDF-b31b1b" height="16"></a>
-paper and inference code (this repository).
+2025-08-10: Trying to make some optimizations in Feature Expression<br>
+2025-05-08: Clone Marigold to local.<br>
 
 ## 🚀 Usage
 
@@ -82,14 +68,12 @@ cd ApDepth
 
 ### 💻 Dependencies
 
- **Using pip:** 
+ **Using Conda:** 
     Alternatively, create a Python native virtual environment and install dependencies into it:
 
-    ```bash
-    python -m venv venv/marigold
-    source venv/marigold/bin/activate
+    conda create -n marigold python==3.12.9
+    conda activate marigold
     pip install -r requirements.txt
-    ```
 
 Keep the environment activated before running the inference script. 
 Activate the environment again after restarting the terminal session.
