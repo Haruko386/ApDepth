@@ -253,6 +253,10 @@ Please cite our paper:
 }
 ```
 
+## Acknowledgements
+
+The code is based on [Marigold](https://github.com/prs-eth/Marigold).
+
 ## 🎫 License
 
 This work is licensed under the Apache License, Version 2.0 (as defined in the [LICENSE](LICENSE.txt)).
