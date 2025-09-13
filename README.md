@@ -21,7 +21,7 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 
 ![cover](doc/cover.jpg)
 
->We present **ApDepth**, a diffusion model, and associated fine-tuning protocol for monocular depth estimation. Based on Marigold, Its core innovation lies in addressing the deficiency of diffusion models in feature representation capability. Our model followed Marigold, derived from Stable Diffusion and fine-tuned with synthetic data: Hypersim and VKitti, achieved ideal results in object edge refinement.
+>We present **ApDepth**, a diffusion model, and associated fine-tuning protocol for monocular depth estimation. Based on Marigold. Its core innovation lies in addressing the deficiency of diffusion models in feature representation capability. Our model followed Marigold, derived from Stable Diffusion and fine-tuned with synthetic data: Hypersim and VKitti, achieved ideal results in object edge refinement.
 
 ## 📢 News
 2025-08-10: Trying to make some optimizations in Feature Expression<br>
@@ -31,19 +31,11 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 
 **We offer several ways to interact with Marigold**:
 
-1. We integrated [Marigold Pipelines into diffusers 🧨](https://huggingface.co/docs/diffusers/api/pipelines/marigold). Check out many exciting usage scenarios in [this diffusers tutorial](https://huggingface.co/docs/diffusers/using-diffusers/marigold_usage).
-
 1. A free online interactive demo is available here: <a href="https://huggingface.co/spaces/prs-eth/marigold-lcm"><img src="https://img.shields.io/badge/🤗%20Hugging%20Face%20(LCM)-Space-yellow" height="16"></a> (kudos to the HF team for the GPU grant)
 
-1. Run the demo locally (requires a GPU and an `nvidia-docker2`, see [Installation Guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)):
-    1. Paper version: `docker run -it -p 7860:7860 --platform=linux/amd64 --gpus all registry.hf.space/toshas-marigold:latest python app.py`
-    1. LCM version: `docker run -it -p 7860:7860 --platform=linux/amd64 --gpus all registry.hf.space/prs-eth-marigold-lcm:latest python app.py`
+2. If you just want to see the examples, visit our gallery: <a href="https://haruko386.github.io/research"><img src="doc/badges/badge-website.svg" height="16"></a>
 
-1. Extended demo on a Google Colab: <a href="https://colab.research.google.com/drive/12G8reD13DdpMie5ZQlaFNo2WCGeNUH-u?usp=sharing"><img src="doc/badges/badge-colab.svg" height="16"></a>
-
-1. If you just want to see the examples, visit our gallery: <a href="https://marigoldmonodepth.github.io"><img src="doc/badges/badge-website.svg" height="16"></a>
-
-1. Finally, local development instructions with this codebase are given below.
+3. Local development instructions with this codebase are given below.
 
 ## 🛠️ Setup
 
@@ -254,10 +246,6 @@ Waitting for publishing⏱️
       year={2024}
 }
 ``` -->
-
-## Acknowledgements
-
-The code is based on [Marigold](https://github.com/prs-eth/Marigold).
 
 ## 🎫 License
 

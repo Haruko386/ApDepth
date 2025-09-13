@@ -40,7 +40,7 @@ from diffusers.models.transformers.transformer_2d import Transformer2DModel
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
     
 class BlockFE(nn.Module):
-    def __init__(self, dim=1280, groups = 8):
+    def __init__(self, dim=1280, groups = 8): # 原来groups=8, dim=1280
         super().__init__()
         self.norm = nn.GroupNorm(groups, dim)
         self.conv_f1 = nn.Conv2d(dim, dim, kernel_size=3, padding=1)

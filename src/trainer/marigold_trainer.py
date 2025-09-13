@@ -52,8 +52,7 @@ from src.util.metric import MetricTracker
 from src.util.multi_res_noise import multi_res_noise_like
 from src.util.alignment import align_depth_least_square
 from src.util.seeding import generate_seed_sequence
-
-from src.util.seeding import generate_seed_sequence
+from marigold.modules.unet_2d_blocks import BlockFE
 
 class MarigoldTrainer:
     def __init__(

@@ -198,6 +198,7 @@ if "__main__" == __name__:
     # -------------------- Device --------------------
     cuda_avail = torch.cuda.is_available() and not args.no_cuda
     device = torch.device("cuda" if cuda_avail else "cpu")
+    # device = "cpu"  # 测试时打开用cpu
     logging.info(f"device = {device}")
 
     # -------------------- Snapshot of code and config --------------------
