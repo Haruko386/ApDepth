@@ -5,9 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [ApDepth]
+## [ApDepth-v1-0]
 ### Added
-- A feature refinement module has been added within the UNet architecture of Stable Diffusion v2. This module refines low-frequency features and enhances high-frequency features to achieve improved edge sharpness.
+>The generation method for Marigold was changed from method a to method b to enable more effective extraction of input image features. The specific framework is shown in the figure below.
+
+<a href="https://smms.app/image/3aenIpzsNGP7jbE" target="_blank" align="center"><img src="https://s2.loli.net/2025/09/16/3aenIpzsNGP7jbE.png" alt="Framework"></a>
+
 ### Result
 - Available later
 
