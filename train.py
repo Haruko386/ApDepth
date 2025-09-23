@@ -33,6 +33,7 @@ from torch.utils.data import ConcatDataset, DataLoader
 from tqdm import tqdm
 
 from marigold.marigold_pipeline import MarigoldPipeline
+from marigold.modules.unet_2d_condition import UNet2DConditionModel
 from src.dataset import BaseDepthDataset, DatasetMode, get_dataset
 from src.dataset.mixed_sampler import MixedBatchSampler
 from src.trainer import get_trainer_cls
@@ -332,6 +333,8 @@ if "__main__" == __name__:
     model = MarigoldPipeline.from_pretrained(
         os.path.join(base_ckpt_dir, cfg.model.pretrained_path), **_pipeline_kwargs
     )
+    # unet = UNet2DConditionModel.from_pretrained(os.path.join(base_ckpt_dir, cfg.model.pretrained_path, f'unet'), low_cpu_mem_usage=False, device_map=None)
+    # model.unet = unet
 
     # -------------------- Trainer --------------------
     # Exit time

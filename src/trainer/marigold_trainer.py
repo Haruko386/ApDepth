@@ -84,8 +84,8 @@ class MarigoldTrainer:
         self.accumulation_steps: int = accumulation_steps
 
         # Adapt input layers
-        if 8 != self.model.unet.config["in_channels"]:
-            self._replace_unet_conv_in()
+        # if 8 != self.model.unet.config["in_channels"]:
+        #     self._replace_unet_conv_in()
 
         # Encode empty text prompt
         self.model.encode_empty_text()
@@ -212,13 +212,13 @@ class MarigoldTrainer:
             for batch in skip_first_batches(self.train_loader, self.n_batch_in_epoch):
                 self.model.unet.train()
 
-                # globally consistent random generators
-                if self.seed is not None:
-                    local_seed = self._get_next_seed()
-                    rand_num_generator = torch.Generator(device=device)
-                    rand_num_generator.manual_seed(local_seed)
-                else:
-                    rand_num_generator = None
+                # # globally consistent random generators
+                # if self.seed is not None:
+                #     local_seed = self._get_next_seed()
+                #     rand_num_generator = torch.Generator(device=device)
+                #     rand_num_generator.manual_seed(local_seed)
+                # else:
+                #     rand_num_generator = None
 
                 # >>> With gradient accumulation >>>
 
@@ -246,78 +246,28 @@ class MarigoldTrainer:
                         depth_gt_for_latent
                     )  # [B, 4, h, w]
 
-                # Sample a random timestep for each image
-                timesteps = torch.randint(
-                    0,
-                    self.scheduler_timesteps,
-                    (batch_size,),
-                    device=device,
-                    generator=rand_num_generator,
-                ).long()  # [B]
-
-                # Sample noise
-                if self.apply_multi_res_noise:
-                    strength = self.mr_noise_strength
-                    if self.annealed_mr_noise:
-                        # calculate strength depending on t
-                        strength = strength * (timesteps / self.scheduler_timesteps)
-                    noise = multi_res_noise_like(
-                        gt_depth_latent,
-                        strength=strength,
-                        downscale_strategy=self.mr_noise_downscale_strategy,
-                        generator=rand_num_generator,
-                        device=device,
-                    )
-                else:
-                    noise = torch.randn(
-                        gt_depth_latent.shape,
-                        device=device,
-                        generator=rand_num_generator,
-                    )  # [B, 4, h, w]
-
-                # Add noise to the latents (diffusion forward process)
-                noisy_latents = self.training_noise_scheduler.add_noise(
-                    gt_depth_latent, noise, timesteps
-                )  # [B, 4, h, w]
-
                 # Text embedding (你是？)
                 text_embed = self.empty_text_embed.to(device).repeat(
                     (batch_size, 1, 1)
                 )  # [B, 77, 1024]
 
-                # Concat rgb and depth latents
-                cat_latents = torch.cat(
-                    [rgb_latent, noisy_latents], dim=1
-                )  # [B, 8, h, w]
-                cat_latents = cat_latents.float()
-
-                # Predict the noise residual
-                model_pred = self.model.unet(
-                    cat_latents, timesteps, text_embed
+                # Predict the output
+                rgb_latent = self.model.unet(
+                    rgb_latent, 1, text_embed
                 ).sample  # [B, 4, h, w]
-                if torch.isnan(model_pred).any():
+                if torch.isnan(rgb_latent).any():
                     logging.warning("model_pred contains NaN.")
 
-                # Get the target for loss depending on the prediction type
-                if "sample" == self.prediction_type:
-                    target = gt_depth_latent
-                elif "epsilon" == self.prediction_type:
-                    target = noise
-                elif "v_prediction" == self.prediction_type:
-                    target = self.training_noise_scheduler.get_velocity(
-                        gt_depth_latent, noise, timesteps
-                    )  # [B, 4, h, w]
-                else:
-                    raise ValueError(f"Unknown prediction type {self.prediction_type}")
+                target = gt_depth_latent
 
                 # Masked latent loss
                 if self.gt_mask_type is not None:
                     latent_loss = self.loss(
-                        model_pred[valid_mask_down].float(),
+                        rgb_latent[valid_mask_down].float(),
                         target[valid_mask_down].float(),
                     )
                 else:
-                    latent_loss = self.loss(model_pred.float(), target.float())
+                    latent_loss = self.loss(rgb_latent.float(), target.float())
 
                 loss = latent_loss.mean()
 

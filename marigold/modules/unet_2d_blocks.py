@@ -40,7 +40,7 @@ from diffusers.models.transformers.transformer_2d import Transformer2DModel
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
     
 class BlockFE(nn.Module):
-    def __init__(self, dim=1280, groups = 8): # 原来groups=8, dim=1280
+    def __init__(self, dim=640, groups = 8):
         super().__init__()
         self.norm = nn.GroupNorm(groups, dim)
         self.conv_f1 = nn.Conv2d(dim, dim, kernel_size=3, padding=1)
@@ -50,14 +50,7 @@ class BlockFE(nn.Module):
         self.conv_f4 = nn.Conv2d(dim, dim, kernel_size=3, padding=1)
         self.act_f4 = nn.SiLU()
         self.conv_f3 = nn.Conv2d(dim, dim, kernel_size=1)
-        # self.conv_s1 = nn.Conv2d(dim, dim, kernel_size=3, padding=1)
-
-        # 优化空间域路径: 使用多尺度卷积
-        # 3x3 分支
-        self.conv_s1_3x3 = nn.Conv2d(dim, dim, kernel_size=3, padding=1)
-        # 5x5 分支，需要更大的填充以保持尺寸
-        self.conv_s1_5x5 = nn.Conv2d(dim, dim, kernel_size=5, padding=2)
-
+        self.conv_s1 = nn.Conv2d(dim, dim, kernel_size=3, padding=1)
         self.act_s1 = nn.SiLU()
         self.conv_s2 = nn.Conv2d(dim, dim, kernel_size=3, padding=1)
         self.fuse = nn.Conv2d(dim*2, dim, kernel_size=1)
@@ -66,7 +59,6 @@ class BlockFE(nn.Module):
         x = self.norm(x)
         B, C, H, W = x.shape
         x_0 = x
-
         # Fourier
         x = self.conv_f1(x)
         x = self.act_f1(x)
@@ -85,29 +77,11 @@ class BlockFE(nn.Module):
         xf = self.conv_f3(x)
 
         # spatial
-        # x = x_0
-        # x = self.conv_s1(x)
-        # x = self.act_s1(x)
-        # x = self.conv_s2(x)
-        # xs = x + x_0
-
-        # 优化后的空间域路径
-        x_spatial = x_0
-
-        # 3x3 分支
-        x_3x3 = self.conv_s1_3x3(x_spatial)
-
-        # 5x5 分支
-        x_5x5 = self.conv_s1_5x5(x_spatial)
-
-        # 融合多尺度特征
-        # 简单相加是一种有效的融合方式
-        x_spatial = x_3x3 + x_5x5
-
-        x_spatial = self.act_s1(x_spatial)
-        x_spatial = self.conv_s2(x_spatial)
-        xs = x_spatial + x_0
-
+        x = x_0
+        x = self.conv_s1(x)
+        x = self.act_s1(x)
+        x = self.conv_s2(x)
+        xs = x + x_0
 
         # fuse
         x = torch.cat([xs, xf], dim=1)

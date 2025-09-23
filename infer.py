@@ -38,6 +38,7 @@ from src.dataset import (
     get_dataset,
     get_pred_name,
 )
+# from marigold.modules.unet_2d_condition import UNet2DConditionModel
 
 if "__main__" == __name__:
     logging.basicConfig(level=logging.INFO)
@@ -204,21 +205,13 @@ if "__main__" == __name__:
     else:
         dtype = torch.float32
         variant = None
-# 这部分我不知道为什么要这样写，改回去的话就只留else里的部分就好
-    if checkpoint_path.endswith('.bin'):
-    # 手动加载 .bin 文件
-        pipe = MarigoldPipeline.from_pretrained(
-        "prs-eth/marigold-v1-0",  # 使用默认配置
-        variant=variant,
-        torch_dtype=dtype,
+
+    pipe = MarigoldPipeline.from_pretrained(
+        checkpoint_path, variant=variant, torch_dtype=dtype
     )
-        state_dict = torch.load(checkpoint_path, map_location="cpu")
-        pipe.unet.load_state_dict(state_dict)  # 只加载 UNet 部分
-    else:
-    # 保持原来的 .safetensor 加载方式
-        pipe = MarigoldPipeline.from_pretrained(
-            checkpoint_path, variant=variant, torch_dtype=dtype
-        )
+    # unet = UNet2DConditionModel.from_pretrained(os.path.join(checkpoint_path, f'unet'))
+    # pipe.unet = unet
+        
 
     try:
         pipe.enable_xformers_memory_efficient_attention()
