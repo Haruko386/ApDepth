@@ -7,14 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [ApDepth-v1-0]
 ### Added
->The generation method for Marigold was changed from method a to method b to enable more effective extraction of input image features. The specific framework is shown in the figure below.
+>We change Marigold from `Stochastic multi-step generation` to `Deterministic one-step perception`. And achieve the same result.
 
-<a href="https://smms.app/image/3aenIpzsNGP7jbE" target="_blank" align="center"><img src="https://s2.loli.net/2025/09/16/3aenIpzsNGP7jbE.png" alt="Framework"></a>
+<a><img src="./doc/changelog/all-framework.png" alt="Framework" align=center></a>
 
 ### Result
-- Available later
-
----
+| Method | # Training Samples | | NYUv2 | | KITTI | | ETH3D | | ScanNet | | DIODE | | Avg. Rank |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| | **Real** | **Synthetic** | **AbsRel↓** | **δ1↑** | **AbsRel↓** | **δ1↑** | **AbsRel↓** | **δ1↑** | **AbsRel↓** | **δ1↑** | **AbsRel↓** | **δ1↑** | |
+| Marigold (w/o) | —* | 74K | 6.0 | 95.9 | 10.5 | 90.4 | 7.1 | 95.1 | 6.9 | 94.5 | 31.0 | 77.2 | - |
+| **Marigold** | | | 5.5 | 96.4 | **9.9** | **91.6** | **6.5** | **96.0** | 6.4 | 95.1 | 30.8 | **77.3** | - |
+| Ours | —* | 74K | **5.3** | **96.5** | 10.7 | 89.3 | **6.5** | 95.8 | **6.0** | **96.3** | **30.0** | 77.0 | - |
 
 ## [Marigold-depth-v1-0] - 2023-12-04
 The Result is showed in table
