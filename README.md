@@ -24,8 +24,9 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 >We present **ApDepth**, a diffusion model, and associated fine-tuning protocol for monocular depth estimation. Based on Marigold. Its core innovation lies in addressing the deficiency of diffusion models in feature representation capability. Our model followed Marigold, derived from Stable Diffusion and fine-tuned with synthetic data: Hypersim and VKitti, achieved ideal results in object edge refinement.
 
 ## 📢 News
-2025-08-10: Trying to make some optimizations in Feature Expression<br>
-2025-05-08: Clone Marigold to local.<br>
+- 2025-09-23: We change Marigold from `Stochastic multi-step generation` to `Deterministic one-step perception`
+- 2025-08-10: Trying to make some optimizations in Feature Expression<br>
+- 2025-05-08: Clone Marigold to local.<br>
 
 ## 🚀 Usage
 
