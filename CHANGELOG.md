@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-## [ApDepth-v1-0]
+## [ApDepth-v1-0] - 2025-09-23
 ### Added
 >We change Marigold from `Stochastic multi-step generation` to `Deterministic one-step perception`. And achieve the same result.
 
