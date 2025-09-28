@@ -83,8 +83,8 @@ class MarigoldTrainer:
         self.accumulation_steps: int = accumulation_steps
 
         # Adapt input layers
-        # if 8 != self.model.unet.config["in_channels"]:
-        #     self._replace_unet_conv_in()
+        if 8 != self.model.unet.config["in_channels"]:
+            self._replace_unet_conv_in()
 
         # Encode empty text prompt
         self.model.encode_empty_text()
@@ -111,6 +111,7 @@ class MarigoldTrainer:
 
         # Loss
         self.loss = get_loss(loss_name=self.cfg.loss.name, **self.cfg.loss.kwargs)
+        self.grad_loss = get_loss(loss_name=self.cfg.grad_loss.name, ** self.cfg.grad_loss.kwargs)
 
         # Training noise scheduler
         self.training_noise_scheduler: DDPMScheduler = DDPMScheduler.from_pretrained(
@@ -130,7 +131,7 @@ class MarigoldTrainer:
 
         # Eval metrics
         self.metric_funcs = [getattr(metric, _met) for _met in cfg.eval.eval_metrics]
-        self.train_metrics = MetricTracker(*["loss"])
+        self.train_metrics = MetricTracker(*["loss", "grad_loss"])
         self.val_metrics = MetricTracker(*[m.__name__ for m in self.metric_funcs])
         # main metric for best checkpoint saving
         self.main_val_metric = cfg.validation.main_val_metric
@@ -167,26 +168,69 @@ class MarigoldTrainer:
         self.in_evaluation = False
         self.global_seed_sequence: List = []  # consistent global seed sequence, used to seed random generator, to ensure consistency when resuming
 
-    # def _replace_unet_conv_in(self):
-    #     # replace the first layer to accept 8 in_channels
-    #     _weight = self.model.unet.conv_in.weight.clone()  # [320, 4, 3, 3]
-    #     _bias = self.model.unet.conv_in.bias.clone()  # [320]
-    #     _weight = _weight.repeat((1, 2, 1, 1))  # Keep selected channel(s)
-    #     # half the activation magnitude
-    #     _weight *= 0.5
-    #     # new conv_in channel
-    #     _n_convin_out_channel = self.model.unet.conv_in.out_channels
-    #     _new_conv_in = Conv2d(
-    #         8, _n_convin_out_channel, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)
-    #     )
-    #     _new_conv_in.weight = Parameter(_weight)
-    #     _new_conv_in.bias = Parameter(_bias)
-    #     self.model.unet.conv_in = _new_conv_in
-    #     logging.info("Unet conv_in layer is replaced")
-    #     # replace config
-    #     self.model.unet.config["in_channels"] = 8
-    #     logging.info("Unet config is updated")
-    #     return
+    def _replace_unet_conv_in(self):
+        # replace the first layer to accept 8 in_channels
+        _weight = self.model.unet.conv_in.weight.clone()  # [320, 4, 3, 3]
+        _bias = self.model.unet.conv_in.bias.clone()  # [320]
+        _weight = _weight.repeat((1, 2, 1, 1))  # Keep selected channel(s)
+        # half the activation magnitude
+        _weight *= 0.5
+        # new conv_in channel
+        _n_convin_out_channel = self.model.unet.conv_in.out_channels
+        _new_conv_in = Conv2d(
+            8, _n_convin_out_channel, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)
+        )
+        _new_conv_in.weight = Parameter(_weight)
+        _new_conv_in.bias = Parameter(_bias)
+        self.model.unet.conv_in = _new_conv_in
+        logging.info("Unet conv_in layer is replaced")
+        # replace config
+        self.model.unet.config["in_channels"] = 8
+        logging.info("Unet config is updated")
+        return
+
+    def grad(self, x):
+        # x.shape : n, c, h, w
+        diff_x = x[..., 1:, 1:] - x[..., 1:, :-1]
+        diff_y = x[..., 1:, 1:] - x[..., :-1, 1:]
+
+        diff_45 = x[..., :-1, 1:] - x[..., 1:, :-1]
+        diff_135 = x[..., 1:, 1:] - x[..., :-1, :-1]
+
+        result = torch.cat([diff_x, diff_y, diff_45, diff_135], dim=1)
+        return result
+    
+    @staticmethod
+    def rgb_fft(x: torch.Tensor, highpass_radius: int = 30):
+        """
+        对 RGB 图像张量做 FFT，提取高频部分
+        :param x: [B, 3, H, W] 输入张量 (0~1 或 0~255 都可以)
+        :param highpass_radius: 高频掩码的低频半径
+        :return: 高频图像张量 [B, 3, H, W]
+        """
+        B, C, H, W = x.shape
+        device = x.device
+
+        # FFT (complex tensor) → [B, C, H, W]
+        f = torch.fft.fft2(x, norm="ortho")
+        fshift = torch.fft.fftshift(f)
+
+        # 生成高通掩码
+        yy, xx = torch.meshgrid(torch.arange(H), torch.arange(W), indexing="ij")
+        yy = yy.to(device) - H // 2
+        xx = xx.to(device) - W // 2
+        mask_low = (xx**2 + yy**2 <= highpass_radius**2).float()
+        mask_high = 1 - mask_low
+        mask_high = mask_high[None, None, :, :]  # [1,1,H,W]
+
+        # 应用掩码
+        fshift_high = fshift * mask_high
+
+        # IFFT
+        f_ishift = torch.fft.ifftshift(fshift_high)
+        img_high = torch.fft.ifft2(f_ishift, norm="ortho").real  # 取实部
+
+        return img_high
 
     def train(self, t_end=None):
         logging.info("Start training")
@@ -224,6 +268,7 @@ class MarigoldTrainer:
                 # Get data
                 rgb = batch["rgb_norm"].to(device)
                 depth_gt_for_latent = batch[self.gt_depth_type].to(device)
+                rgb_fft = self.rgb_fft(rgb)  # [B, 3, H, W]
 
                 if self.gt_mask_type is not None:
                     valid_mask_for_latent = batch[self.gt_mask_type].to(device)
@@ -240,6 +285,7 @@ class MarigoldTrainer:
                 with torch.no_grad():
                     # Encode image
                     rgb_latent = self.model.encode_rgb(rgb)  # [B, 4, h, w]
+                    rgb_fft_latent = self.model.encode_rgb(rgb_fft)
                     # Encode GT depth
                     gt_depth_latent = self.encode_depth(
                         depth_gt_for_latent
@@ -250,33 +296,37 @@ class MarigoldTrainer:
                     (batch_size, 1, 1)
                 )  # [B, 77, 1024]
 
+                unet_input = torch.cat([rgb_latent, rgb_fft_latent], dim=1)
+
                 # Predict the output
-                rgb_latent = self.model.unet(
-                    rgb_latent, 1, text_embed
+                depth_pred = self.model.unet(
+                    unet_input, 1, text_embed
                 ).sample  # [B, 4, h, w]
-                if torch.isnan(rgb_latent).any():
+                if torch.isnan(depth_pred).any():
                     logging.warning("model_pred contains NaN.")
 
                 target = gt_depth_latent
 
-                # Masked latent loss(MSE+Grad)
+                # Masked latent loss
                 if self.gt_mask_type is not None:
-                    latent_loss = self.loss(rgb_latent, target, valid_mask=valid_mask_down)
+                    latent_loss = self.loss(
+                        depth_pred[valid_mask_down].float(),
+                        target[valid_mask_down].float(),
+                    )
                 else:
-                    latent_loss = self.loss(rgb_latent.float(), target.float())
-
-                # Masked latent loss(MSE)
-                # if self.gt_mask_type is not None:
-                #     latent_loss = self.loss(
-                #         rgb_latent[valid_mask_down].float(),
-                #         target[valid_mask_down].float(),
-                #     )
-                # else:
-                #     latent_loss = self.loss(rgb_latent.float(), target.float())
+                    latent_loss = self.loss(depth_pred.float(), target.float())
 
                 loss = latent_loss.mean()
 
                 self.train_metrics.update("loss", loss.item())
+
+                gt_depth_latent[valid_mask_down] = 0
+                grad_gt = self.grad(gt_depth_latent)
+                depth_pred[valid_mask_down] = 0
+                grad_pred = self.grad(depth_pred)
+                grad_loss = self.grad_loss(grad_gt, grad_pred)
+                self.train_metrics.update(f"grad_loss", grad_loss.item())
+                loss += self.cfg.grad_loss.lamda * grad_loss
 
                 loss = loss / self.gradient_accumulation_steps
                 loss.backward()

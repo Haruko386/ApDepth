@@ -104,3 +104,11 @@ eval:
   - delta3_acc
   - i_rmse
   - silog_rmse
+
+grad_loss:
+  name: huber_loss
+  kwargs:
+    delta: 0.2
+  lamda: 1e-3
+  num: 3
+  thre: 0.04
