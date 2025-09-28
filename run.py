@@ -35,6 +35,7 @@ from marigold import MarigoldPipeline
 EXTENSION_LIST = [".jpg", ".jpeg", ".png"]
 
 from torchvision import transforms
+from marigold.modules.unet_2d_condition import UNet2DConditionModel
 
 
 if "__main__" == __name__:
@@ -209,6 +210,8 @@ if "__main__" == __name__:
     pipe: MarigoldPipeline = MarigoldPipeline.from_pretrained(
         checkpoint_path, variant=variant, torch_dtype=dtype
     )
+    # unet = UNet2DConditionModel.from_pretrained(os.path.join(checkpoint_path, f'unet'))
+    # pipe.unet = unet
 
     try:
         pipe.enable_xformers_memory_efficient_attention()

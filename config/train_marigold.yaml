@@ -60,10 +60,16 @@ optimizer:
   name: Adam
 
 loss:
-  name: huber_loss
+  name: mse_loss
   kwargs:
-    delta: 0.5
+    # # delta: 0.5
     reduction: mean
+
+# loss:
+#   name: mse_grad
+#   kwargs:
+#     grad_weight: 0.5
+#     reduction: mean
 
 lr: 3.0e-05
 lr_scheduler:

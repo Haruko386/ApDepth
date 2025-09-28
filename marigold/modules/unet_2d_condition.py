@@ -67,7 +67,6 @@ class UNet2DConditionOutput(BaseOutput):
     """
 
     sample: torch.Tensor = None
-    feat_64: torch.Tensor = None
 
 
 class UNet2DConditionModel(
@@ -407,8 +406,6 @@ class UNet2DConditionModel(
             attention_head_dim=attention_head_dim[-1],
             dropout=dropout,
         )
-
-        self.fftblock = BlockFE()
 
         # count how many layers upsample the images
         self.num_upsamplers = 0
@@ -1270,11 +1267,6 @@ class UNet2DConditionModel(
         if is_controlnet:
             sample = sample + mid_block_additional_residual
 
-        feat_64 = sample
-
-        # fe transform
-        sample = self.fftblock(sample)
-
         # 5. up
         for i, upsample_block in enumerate(self.up_blocks):
             is_final_block = i == len(self.up_blocks) - 1
@@ -1319,4 +1311,4 @@ class UNet2DConditionModel(
         if not return_dict:
             return (sample,)
 
-        return UNet2DConditionOutput(sample=sample, feat_64=feat_64)
+        return UNet2DConditionOutput(sample=sample)

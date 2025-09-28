@@ -52,7 +52,6 @@ from src.util.metric import MetricTracker
 from src.util.multi_res_noise import multi_res_noise_like
 from src.util.alignment import align_depth_least_square
 from src.util.seeding import generate_seed_sequence
-from marigold.modules.unet_2d_blocks import BlockFE
 
 class MarigoldTrainer:
     def __init__(
@@ -168,26 +167,26 @@ class MarigoldTrainer:
         self.in_evaluation = False
         self.global_seed_sequence: List = []  # consistent global seed sequence, used to seed random generator, to ensure consistency when resuming
 
-    def _replace_unet_conv_in(self):
-        # replace the first layer to accept 8 in_channels
-        _weight = self.model.unet.conv_in.weight.clone()  # [320, 4, 3, 3]
-        _bias = self.model.unet.conv_in.bias.clone()  # [320]
-        _weight = _weight.repeat((1, 2, 1, 1))  # Keep selected channel(s)
-        # half the activation magnitude
-        _weight *= 0.5
-        # new conv_in channel
-        _n_convin_out_channel = self.model.unet.conv_in.out_channels
-        _new_conv_in = Conv2d(
-            8, _n_convin_out_channel, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)
-        )
-        _new_conv_in.weight = Parameter(_weight)
-        _new_conv_in.bias = Parameter(_bias)
-        self.model.unet.conv_in = _new_conv_in
-        logging.info("Unet conv_in layer is replaced")
-        # replace config
-        self.model.unet.config["in_channels"] = 8
-        logging.info("Unet config is updated")
-        return
+    # def _replace_unet_conv_in(self):
+    #     # replace the first layer to accept 8 in_channels
+    #     _weight = self.model.unet.conv_in.weight.clone()  # [320, 4, 3, 3]
+    #     _bias = self.model.unet.conv_in.bias.clone()  # [320]
+    #     _weight = _weight.repeat((1, 2, 1, 1))  # Keep selected channel(s)
+    #     # half the activation magnitude
+    #     _weight *= 0.5
+    #     # new conv_in channel
+    #     _n_convin_out_channel = self.model.unet.conv_in.out_channels
+    #     _new_conv_in = Conv2d(
+    #         8, _n_convin_out_channel, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)
+    #     )
+    #     _new_conv_in.weight = Parameter(_weight)
+    #     _new_conv_in.bias = Parameter(_bias)
+    #     self.model.unet.conv_in = _new_conv_in
+    #     logging.info("Unet conv_in layer is replaced")
+    #     # replace config
+    #     self.model.unet.config["in_channels"] = 8
+    #     logging.info("Unet config is updated")
+    #     return
 
     def train(self, t_end=None):
         logging.info("Start training")
@@ -260,14 +259,20 @@ class MarigoldTrainer:
 
                 target = gt_depth_latent
 
-                # Masked latent loss
+                # Masked latent loss(MSE+Grad)
                 if self.gt_mask_type is not None:
-                    latent_loss = self.loss(
-                        rgb_latent[valid_mask_down].float(),
-                        target[valid_mask_down].float(),
-                    )
+                    latent_loss = self.loss(rgb_latent, target, valid_mask=valid_mask_down)
                 else:
                     latent_loss = self.loss(rgb_latent.float(), target.float())
+
+                # Masked latent loss(MSE)
+                # if self.gt_mask_type is not None:
+                #     latent_loss = self.loss(
+                #         rgb_latent[valid_mask_down].float(),
+                #         target[valid_mask_down].float(),
+                #     )
+                # else:
+                #     latent_loss = self.loss(rgb_latent.float(), target.float())
 
                 loss = latent_loss.mean()
 

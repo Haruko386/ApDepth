@@ -40,9 +40,11 @@ from diffusers.models.transformers.transformer_2d import Transformer2DModel
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
     
 class BlockFE(nn.Module):
-    def __init__(self, dim=640, groups = 8):
+    def __init__(self, dim=4, groups=1): # Set dim to 4 for RGB latent input
         super().__init__()
-        self.norm = nn.GroupNorm(groups, dim)
+        # Since channels are now 4, groups can be set to 1 or 4.
+        # It's better to make groups a parameter, but for a simple fix, 1 or 4 will work.
+        self.norm = nn.GroupNorm(groups, dim) 
         self.conv_f1 = nn.Conv2d(dim, dim, kernel_size=3, padding=1)
         self.act_f1 = nn.SiLU()
         self.conv_f2 = nn.Conv2d(dim, dim, kernel_size=3, padding=1)
@@ -53,41 +55,50 @@ class BlockFE(nn.Module):
         self.conv_s1 = nn.Conv2d(dim, dim, kernel_size=3, padding=1)
         self.act_s1 = nn.SiLU()
         self.conv_s2 = nn.Conv2d(dim, dim, kernel_size=3, padding=1)
-        self.fuse = nn.Conv2d(dim*2, dim, kernel_size=1)
+        self.fuse = nn.Conv2d(dim * 2, dim, kernel_size=1)
 
     def forward(self, x):
+        # The input x is the rgb_latent of shape [B, 4, H, W]
         x = self.norm(x)
         B, C, H, W = x.shape
         x_0 = x
-        # Fourier
-        x = self.conv_f1(x)
-        x = self.act_f1(x)
-        x_f0 = x
-        x = torch.fft.rfft2(x, dim=(2, 3), norm='ortho')
-        x_mag = torch.abs(x)
-        x_angle = torch.angle(x)
+
+        # Fourier branch
+        x_f = self.conv_f1(x)
+        x_f = self.act_f1(x_f)
+        x_f0 = x_f
+        
+        # Real-valued FFT for real-valued input
+        x_f_fft = torch.fft.rfft2(x_f, dim=(2, 3), norm='ortho')
+        x_mag = torch.abs(x_f_fft)
+        x_angle = torch.angle(x_f_fft)
+
+        # Modulate magnitude and phase
         x_mag = self.conv_f2(x_mag)
         x_mag = self.act_f2(x_mag)
         x_angle = self.conv_f4(x_angle)
         x_angle = self.act_f4(x_angle)
+
+        # Reconstruct complex tensor from modulated magnitude and phase
         real = x_mag * torch.cos(x_angle)
         imag = x_mag * torch.sin(x_angle)
-        x = torch.fft.irfft2(torch.complex(real, imag), s=(H, W), dim=(2, 3), norm='ortho')
-        x = x + x_f0
-        xf = self.conv_f3(x)
+        
+        # Inverse FFT
+        x_f = torch.fft.irfft2(torch.complex(real, imag), s=(H, W), dim=(2, 3), norm='ortho')
+        x_f = x_f + x_f0
+        xf = self.conv_f3(x_f)
 
-        # spatial
-        x = x_0
-        x = self.conv_s1(x)
-        x = self.act_s1(x)
-        x = self.conv_s2(x)
-        xs = x + x_0
+        # Spatial branch
+        x_s = self.conv_s1(x_0)
+        x_s = self.act_s1(x_s)
+        x_s = self.conv_s2(x_s)
+        xs = x_s + x_0
 
-        # fuse
-        x = torch.cat([xs, xf], dim=1)
-        x = self.fuse(x)
+        # Fuse
+        x_fused = torch.cat([xs, xf], dim=1)
+        x_out = self.fuse(x_fused)
 
-        return x
+        return x_out
 
 def get_down_block(
     down_block_type: str,
