@@ -10,7 +10,7 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 [![Website](doc/badges/badge-website.svg)](https://haruko386.github.io/research)
 [![License](https://img.shields.io/badge/License-Apache--2.0-929292)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Static Badge](https://img.shields.io/badge/build-Haruko386-brightgreen?style=flat&logo=steam&logoColor=white&logoSize=auto&label=steam&labelColor=black&color=gray&cacheSeconds=3600)](https://steamcommunity.com/profiles/76561198217881431/)
-<!-- [![Hugging Face Model](https://img.shields.io/badge/🤗%20Hugging%20Face-Model-green)](https://huggingface.co/prs-eth/marigold-v1-0) -->
+[![Hugging Face Model](https://img.shields.io/badge/🤗%20Hugging%20Face-Model-green)](https://huggingface.co/developy/ApDepth)
 <!-- [![Website](https://img.shields.io/badge/Project-Website-1081c2)](https://arxiv.org/abs/2312.02145) -->
 <!-- [![GitHub](https://img.shields.io/github/stars/prs-eth/Marigold?style=default&label=GitHub%20★&logo=github)](https://github.com/prs-eth/Marigold) -->
 <!-- [![HF Space](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-blue)]() -->
@@ -85,23 +85,13 @@ Activate the environment again after restarting the terminal session.
 
 1. Or place your images in a directory, for example, under `input/in-the-wild_example`, and run the following inference command.
 
-### 🚀 Run inference with LCM (faster)
-
-The [LCM checkpoint](https://huggingface.co/prs-eth/marigold-lcm-v1-0) is distilled from our original checkpoint towards faster inference speed (by reducing inference steps). The inference steps can be as few as 1 (default) to 4. Run with default LCM setting:
-
-```bash
- python run.py \
-     --input_rgb_dir input/in-the-wild_example \
-     --output_dir output/in-the-wild_example_lcm
- ```
-
-### 🎮 Run inference with DDIM (paper setting)
+### 🎮 Run inference with paper setting
 
 This setting corresponds to our paper. For academic comparison, please run with this setting.
 
 ```bash
 python run.py \
-    --checkpoint prs-eth/marigold-v1-0 \
+    --checkpoint prs-eth/ApDepth-v1-0 \
     --denoise_steps 50 \
     --ensemble_size 10 \
     --input_rgb_dir input/in-the-wild_example \
