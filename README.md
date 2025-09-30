@@ -11,10 +11,7 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 [![License](https://img.shields.io/badge/License-Apache--2.0-929292)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Static Badge](https://img.shields.io/badge/build-Haruko386-brightgreen?style=flat&logo=steam&logoColor=white&logoSize=auto&label=steam&labelColor=black&color=gray&cacheSeconds=3600)](https://steamcommunity.com/profiles/76561198217881431/)
 [![Hugging Face Model](https://img.shields.io/badge/🤗%20Hugging%20Face-Model-green)](https://huggingface.co/developy/ApDepth)
-<!-- [![Website](https://img.shields.io/badge/Project-Website-1081c2)](https://arxiv.org/abs/2312.02145) -->
-<!-- [![GitHub](https://img.shields.io/github/stars/prs-eth/Marigold?style=default&label=GitHub%20★&logo=github)](https://github.com/prs-eth/Marigold) -->
-<!-- [![HF Space](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-blue)]() -->
-<!-- [![Docker](doc/badges/badge-docker.svg)]() -->
+[![Hugging Face Demo](https://img.shields.io/badge/🤗%20Hugging%20Face-Demo-purple)](https://huggingface.co/spaces/developy/ApDepth)
 
 [Haruko386](https://haruko386.github.io/),
 [Shuai Yuan](https://syjz.teacher.360eol.com/teacherBasic/preview?teacherId=23776)
