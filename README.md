@@ -29,7 +29,7 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 
 **We offer several ways to interact with Marigold**:
 
-1. A free online interactive demo is available here: <a href="https://huggingface.co/spaces/prs-eth/marigold-lcm"><img src="https://img.shields.io/badge/🤗%20Hugging%20Face%20(LCM)-Space-yellow" height="16"></a> (kudos to the HF team for the GPU grant)
+1. A free online interactive demo is available here: <a href="https://huggingface.co/spaces/developy/ApDepth"><img src="https://img.shields.io/badge/🤗%20Hugging%20Face-Demo-purple" height="18"></a>
 
 2. If you just want to see the examples, visit our gallery: <a href="https://haruko386.github.io/research"><img src="doc/badges/badge-website.svg" height="16"></a>
 
@@ -88,7 +88,7 @@ This setting corresponds to our paper. For academic comparison, please run with 
 
 ```bash
 python run.py \
-    --checkpoint prs-eth/ApDepth-v1-0 \
+    --checkpoint prs-eth/marigold-v1-0 \
     --denoise_steps 50 \
     --ensemble_size 10 \
     --input_rgb_dir input/in-the-wild_example \
