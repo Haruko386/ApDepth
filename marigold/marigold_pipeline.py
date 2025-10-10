@@ -23,6 +23,7 @@ import logging
 from typing import Dict, Optional, Union
 
 import numpy as np
+import cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -31,9 +32,8 @@ from diffusers import (
     DDIMScheduler,
     DiffusionPipeline,
     LCMScheduler,
-    # UNet2DConditionModel,
+    UNet2DConditionModel,
 )
-from marigold.modules.unet_2d_condition import UNet2DConditionModel
 from diffusers.utils import BaseOutput
 from PIL import Image
 from torch.utils.data import DataLoader, TensorDataset
@@ -50,6 +50,7 @@ from .util.image_util import (
     get_tv_resample_method,
     resize_max_res,
 )
+from DA2.depth_anything_v2.dpt import DepthAnythingV2
 
 
 class MarigoldDepthOutput(BaseOutput):
@@ -97,12 +98,6 @@ class MarigoldPipeline(DiffusionPipeline):
             A model property specifying whether the predicted depth maps are shift-invariant. This value must be set in
             the model config. When used together with the `scale_invariant=True` flag, the model is also called
             "affine-invariant". NB: overriding this value is not supported.
-        default_denoising_steps (`int`, *optional*):
-            The minimum number of denoising diffusion steps that are required to produce a prediction of reasonable
-            quality with the given model. This value must be set in the model config. When the pipeline is called
-            without explicitly setting `num_inference_steps`, the default value is used. This is required to ensure
-            reasonable results with various model flavors compatible with the pipeline, such as those relying on very
-            short denoising schedules (`LCMScheduler`) and those with full diffusion schedules (`DDIMScheduler`).
         default_processing_resolution (`int`, *optional*):
             The recommended value of the `processing_resolution` parameter of the pipeline. This value must be set in
             the model config. When the pipeline is called without explicitly setting `processing_resolution`, the
@@ -122,7 +117,6 @@ class MarigoldPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         scale_invariant: Optional[bool] = True,
         shift_invariant: Optional[bool] = True,
-        default_denoising_steps: Optional[int] = None,
         default_processing_resolution: Optional[int] = None,
     ):
         super().__init__()
@@ -136,23 +130,36 @@ class MarigoldPipeline(DiffusionPipeline):
         self.register_to_config(
             scale_invariant=scale_invariant,
             shift_invariant=shift_invariant,
-            default_denoising_steps=default_denoising_steps,
             default_processing_resolution=default_processing_resolution,
         )
 
         self.scale_invariant = scale_invariant
         self.shift_invariant = shift_invariant
-        self.default_denoising_steps = default_denoising_steps
         self.default_processing_resolution = default_processing_resolution
 
         self.empty_text_embed = None
+
+        self._fft_masks = {}
+        
+        da2_config = {
+            'encoder': 'vits',  # 'vits', 'vitb', 'vitl', 'vitg'
+            'features': 64,
+            'out_channels': [48, 96, 192, 384],
+        }
+        
+        # 初始化 DA2 模型
+        if da2_config is not None:
+            self.da2 = DepthAnythingV2(**da2_config)
+            self.da2.load_state_dict(torch.load(f'/root/Marigold/DA2/checkpoints/depth_anything_v2_{da2_config["encoder"]}.pth', map_location='cpu'))
+            self.da2.to(device="cuda").eval()
+        else:
+            self.da2 = None
 
     @torch.no_grad()
     def __call__(
         self,
         input_image: Union[Image.Image, torch.Tensor],
-        denoising_steps: Optional[int] = None,
-        ensemble_size: int = 5,
+        ensemble_size: int = 1,
         processing_res: Optional[int] = None,
         match_input_res: bool = True,
         resample_method: str = "bilinear",
@@ -167,10 +174,6 @@ class MarigoldPipeline(DiffusionPipeline):
         Args:
             input_image (`Image`):
                 Input RGB (or gray-scale) image.
-            denoising_steps (`int`, *optional*, defaults to `None`):
-                Number of denoising diffusion steps during inference. The default value `None` results in automatic
-                selection. The number of steps should be at least 10 with the full Marigold models, and between 1 and 4
-                for Marigold-LCM models.
             ensemble_size (`int`, *optional*, defaults to `10`):
                 Number of predictions to be ensembled.
             processing_res (`int`, *optional*, defaults to `None`):
@@ -210,9 +213,6 @@ class MarigoldPipeline(DiffusionPipeline):
 
         assert processing_res >= 0
 
-        # Check if denoising step is reasonable
-        self._check_inference_step(denoising_steps)
-
         resample_method: InterpolationMode = get_tv_resample_method(resample_method)
 
         # ----------------- Image Preprocess -----------------
@@ -246,7 +246,7 @@ class MarigoldPipeline(DiffusionPipeline):
 
         # ----------------- Predicting depth -----------------
         # Batch repeated input image
-        duplicated_rgb = rgb_norm.expand(1, -1, -1, -1)
+        duplicated_rgb = rgb_norm.expand(ensemble_size, -1, -1, -1)
         single_rgb_dataset = TensorDataset(duplicated_rgb)
         if batch_size > 0:
             _bs = batch_size
@@ -322,27 +322,6 @@ class MarigoldPipeline(DiffusionPipeline):
             uncertainty=pred_uncert,
         )
 
-    def _check_inference_step(self, n_step: int) -> None:
-        """
-        Check if denoising step is reasonable
-        Args:
-            n_step (`int`): denoising steps
-        """
-        assert n_step >= 1
-
-        if isinstance(self.scheduler, DDIMScheduler):
-            if n_step < 10:
-                logging.warning(
-                    f"Too few denoising steps: {n_step}. Recommended to use the LCM checkpoint for few-step inference."
-                )
-        elif isinstance(self.scheduler, LCMScheduler):
-            if not 1 <= n_step <= 4:
-                logging.warning(
-                    f"Non-optimal setting of denoising steps: {n_step}. Recommended setting is 1-4 steps."
-                )
-        else:
-            raise RuntimeError(f"Unsupported scheduler type: {type(self.scheduler)}")
-
     def encode_empty_text(self):
         """
         Encode text embedding for empty prompt
@@ -379,10 +358,14 @@ class MarigoldPipeline(DiffusionPipeline):
             `torch.Tensor`: Predicted depth map.
         """
         device = self.device
+        # preprare data
         rgb_in = rgb_in.to(device)
+        depth_da2 = self.da2.infer_batch(rgb_in).to(device)
 
-        # Encode image
-        rgb_latent = self.encode_rgb(rgb_in)
+        with torch.no_grad():
+            # Encode image
+            rgb_latent = self.encode_rgb(rgb_in)
+            depth_da2_latent = self.encode_rgb(depth_da2)
 
         # Batched empty text embedding
         if self.empty_text_embed is None:
@@ -391,8 +374,13 @@ class MarigoldPipeline(DiffusionPipeline):
             (rgb_latent.shape[0], 1, 1)
         ).to(device)  # [B, 2, 1024]
 
+        # get input
+        unet_input = torch.cat(
+            [depth_da2_latent, rgb_latent],dim=1
+        ) # this order is important
+
         depth_latent = self.unet(
-            rgb_latent, 1, encoder_hidden_states=batch_empty_text_embed
+            unet_input, 1, encoder_hidden_states=batch_empty_text_embed
         ).sample  # [B, 4, h, w]
 
         depth = self.decode_depth(depth_latent)

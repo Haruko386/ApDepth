@@ -10,8 +10,7 @@ python infer.py  \
     --checkpoint $ckpt \
     --seed 1234 \
     --base_data_dir $BASE_DATA_DIR \
-    --denoise_steps 50 \
-    --ensemble_size 10 \
+    --ensemble_size 1 \
     --dataset_config config/dataset/data_eth3d.yaml \
     --output_dir output/${subfolder}/eth3d/prediction \
     --processing_res 756 \

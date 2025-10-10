@@ -33,7 +33,6 @@ from torch.utils.data import ConcatDataset, DataLoader
 from tqdm import tqdm
 
 from marigold.marigold_pipeline import MarigoldPipeline
-from marigold.modules.unet_2d_condition import UNet2DConditionModel
 from src.dataset import BaseDepthDataset, DatasetMode, get_dataset
 from src.dataset.mixed_sampler import MixedBatchSampler
 from src.trainer import get_trainer_cls
@@ -329,12 +328,17 @@ if "__main__" == __name__:
     #     vis_loaders.append(_vis_loader)
 
     # -------------------- Model --------------------
+    # model_configs = {
+    #     'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
+    #     'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
+    #     'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
+    #     'vitg': {'encoder': 'vitg', 'features': 384, 'out_channels': [1536, 1536, 1536, 1536]}
+    # }
+     
     _pipeline_kwargs = cfg.pipeline.kwargs if cfg.pipeline.kwargs is not None else {}
     model = MarigoldPipeline.from_pretrained(
         os.path.join(base_ckpt_dir, cfg.model.pretrained_path), **_pipeline_kwargs
     )
-    unet = UNet2DConditionModel.from_pretrained(os.path.join(base_ckpt_dir, cfg.model.pretrained_path, f'unet'), low_cpu_mem_usage=False, device_map=None)
-    model.unet = unet
 
     # -------------------- Trainer --------------------
     # Exit time

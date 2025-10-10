@@ -53,8 +53,8 @@ gt_depth_type: depth_raw_norm
 gt_mask_type: valid_mask_raw
 
 # 建议这个数字不要再动
-max_epoch: 10000  # a large enough number (10000) to ensure convergence
-max_iter: 18000 # usually converges at around 20k
+max_epoch: 10000  # a large enough number to ensure convergence
+max_iter: 23000 # usually converges at around 20k
 
 optimizer:
   name: Adam
@@ -62,14 +62,7 @@ optimizer:
 loss:
   name: mse_loss
   kwargs:
-    # # delta: 0.5
     reduction: mean
-
-# loss:
-#   name: mse_grad
-#   kwargs:
-#     grad_weight: 0.5
-#     reduction: mean
 
 lr: 3.0e-05
 lr_scheduler:

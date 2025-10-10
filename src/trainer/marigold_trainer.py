@@ -190,7 +190,7 @@ class MarigoldTrainer:
         return
 
     def grad(self, x):
-        # x.shape : n, c, h, w
+        # x.shape : B, C,H, W
         diff_x = x[..., 1:, 1:] - x[..., 1:, :-1]
         diff_y = x[..., 1:, 1:] - x[..., :-1, 1:]
 
@@ -200,38 +200,6 @@ class MarigoldTrainer:
         result = torch.cat([diff_x, diff_y, diff_45, diff_135], dim=1)
         return result
     
-    @staticmethod
-    def rgb_fft(x: torch.Tensor, highpass_radius: int = 30):
-        """
-        对 RGB 图像张量做 FFT，提取高频部分
-        :param x: [B, 3, H, W] 输入张量 (0~1 或 0~255 都可以)
-        :param highpass_radius: 高频掩码的低频半径
-        :return: 高频图像张量 [B, 3, H, W]
-        """
-        B, C, H, W = x.shape
-        device = x.device
-
-        # FFT (complex tensor) → [B, C, H, W]
-        f = torch.fft.fft2(x, norm="ortho")
-        fshift = torch.fft.fftshift(f)
-
-        # 生成高通掩码
-        yy, xx = torch.meshgrid(torch.arange(H), torch.arange(W), indexing="ij")
-        yy = yy.to(device) - H // 2
-        xx = xx.to(device) - W // 2
-        mask_low = (xx**2 + yy**2 <= highpass_radius**2).float()
-        mask_high = 1 - mask_low
-        mask_high = mask_high[None, None, :, :]  # [1,1,H,W]
-
-        # 应用掩码
-        fshift_high = fshift * mask_high
-
-        # IFFT
-        f_ishift = torch.fft.ifftshift(fshift_high)
-        img_high = torch.fft.ifft2(f_ishift, norm="ortho").real  # 取实部
-
-        return img_high
-
     def train(self, t_end=None):
         logging.info("Start training")
 
@@ -254,21 +222,12 @@ class MarigoldTrainer:
             # Skip previous batches when resume
             for batch in skip_first_batches(self.train_loader, self.n_batch_in_epoch):
                 self.model.unet.train()
-
-                # # globally consistent random generators
-                # if self.seed is not None:
-                #     local_seed = self._get_next_seed()
-                #     rand_num_generator = torch.Generator(device=device)
-                #     rand_num_generator.manual_seed(local_seed)
-                # else:
-                #     rand_num_generator = None
-
                 # >>> With gradient accumulation >>>
-
                 # Get data
                 rgb = batch["rgb_norm"].to(device)
                 depth_gt_for_latent = batch[self.gt_depth_type].to(device)
-                rgb_fft = self.rgb_fft(rgb)  # [B, 3, H, W]
+                with torch.no_grad():
+                    depth_da2 = self.model.da2.infer_batch(rgb)
 
                 if self.gt_mask_type is not None:
                     valid_mask_for_latent = batch[self.gt_mask_type].to(device)
@@ -285,18 +244,24 @@ class MarigoldTrainer:
                 with torch.no_grad():
                     # Encode image
                     rgb_latent = self.model.encode_rgb(rgb)  # [B, 4, h, w]
-                    rgb_fft_latent = self.model.encode_rgb(rgb_fft)
+                    depth_da2_latent = self.model.encode_rgb(depth_da2) # [B, 4, h, w]
                     # Encode GT depth
                     gt_depth_latent = self.encode_depth(
                         depth_gt_for_latent
                     )  # [B, 4, h, w]
 
-                # Text embedding (你是？)
+                # Text embedding (你是?)
                 text_embed = self.empty_text_embed.to(device).repeat(
                     (batch_size, 1, 1)
                 )  # [B, 77, 1024]
 
-                unet_input = torch.cat([rgb_latent, rgb_fft_latent], dim=1)
+                # unet_input = torch.cat(
+                #     [rgb_latent, rgb_fft_latent], dim=1
+                # ) # this oreder is important? Change it then
+
+                unet_input = torch.cat(
+                    [depth_da2_latent, rgb_latent], dim=1
+                ) 
 
                 # Predict the output
                 depth_pred = self.model.unet(
@@ -307,7 +272,7 @@ class MarigoldTrainer:
 
                 target = gt_depth_latent
 
-                # Masked latent loss
+                # Masked latent loss (MSE loss)
                 if self.gt_mask_type is not None:
                     latent_loss = self.loss(
                         depth_pred[valid_mask_down].float(),
@@ -320,13 +285,19 @@ class MarigoldTrainer:
 
                 self.train_metrics.update("loss", loss.item())
 
-                gt_depth_latent[valid_mask_down] = 0
-                grad_gt = self.grad(gt_depth_latent)
-                depth_pred[valid_mask_down] = 0
-                grad_pred = self.grad(depth_pred)
-                grad_loss = self.grad_loss(grad_gt, grad_pred)
-                self.train_metrics.update(f"grad_loss", grad_loss.item())
-                loss += self.cfg.grad_loss.lamda * grad_loss
+                # # GT Grad
+                # gt_depth_latent[valid_mask_down] = 0
+                # grad_gt = self.grad(gt_depth_latent)
+
+                # # Depth Grad
+                # depth_pred[valid_mask_down] = 0
+                # grad_pred = self.grad(depth_pred)
+
+                # # Get Grad_Loss
+                # grad_loss = self.grad_loss(grad_gt, grad_pred)
+
+                # self.train_metrics.update(f"grad_loss", grad_loss.item())
+                # loss += self.cfg.grad_loss.lamda * grad_loss
 
                 loss = loss / self.gradient_accumulation_steps
                 loss.backward()

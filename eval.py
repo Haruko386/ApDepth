@@ -86,7 +86,7 @@ if "__main__" == __name__:
     # LS depth alignment
     parser.add_argument(
         "--alignment",
-        choices=[None, "least_square", "least_square_disparity"],
+        choices=[None, "least_square", "least_square_disparity", "least_square_sqrt_disp"],
         default=None,
         help="Method to estimate scale and shift between predictions and ground truth.",
     )
@@ -118,6 +118,7 @@ if "__main__" == __name__:
     # -------------------- Device --------------------
     cuda_avail = torch.cuda.is_available() and not no_cuda
     device = torch.device("cuda" if cuda_avail else "cpu")
+    device = "cuda"
     logging.info(f"Device: {device}")
 
     # -------------------- Data --------------------
@@ -194,6 +195,30 @@ if "__main__" == __name__:
                 return_scale_shift=True,
                 max_resolution=alignment_max_res,
             )
+            # convert to depth
+            disparity_pred = np.clip(
+                disparity_pred, a_min=1e-3, a_max=None
+            )  # avoid 0 disparity
+            depth_pred = disparity2depth(disparity_pred)
+        elif "least_square_sqrt_disp" == alignment:
+            # convert GT depth -> GT sqrt disparity
+            gt_disparity, gt_non_neg_mask = depth2disparity(
+                depth=depth_raw, return_mask=True
+            )
+            gt_sqrt_disp = np.sqrt(gt_disparity)
+            gt_non_neg_mask = (gt_sqrt_disp > 0) & gt_non_neg_mask
+            # LS alignment in sqrt space
+            pred_non_neg_mask = depth_pred > 0
+            valid_nonnegative_mask = valid_mask & gt_non_neg_mask & pred_non_neg_mask
+            depth_sqrt_disp_pred, scale, shift = align_depth_least_square(
+                gt_arr=gt_sqrt_disp,
+                pred_arr=depth_pred,
+                valid_mask_arr=valid_nonnegative_mask,
+                return_scale_shift=True,
+            )
+            # convert to depth
+            disparity_pred = depth_sqrt_disp_pred ** 2
+
             # convert to depth
             disparity_pred = np.clip(
                 disparity_pred, a_min=1e-3, a_max=None

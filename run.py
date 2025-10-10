@@ -65,12 +65,6 @@ if "__main__" == __name__:
 
     # inference setting
     parser.add_argument(
-        "--denoise_steps",
-        type=int,
-        default=None,
-        help="Diffusion denoising steps, more steps results in higher accuracy but slower inference speed. For the original (DDIM) version, it's recommended to use 10-50 steps, while for LCM 1-4 steps.",
-    )
-    parser.add_argument(
         "--ensemble_size",
         type=int,
         default=5,
@@ -136,7 +130,6 @@ if "__main__" == __name__:
     input_rgb_dir = args.input_rgb_dir
     output_dir = args.output_dir
 
-    denoise_steps = args.denoise_steps
     ensemble_size = args.ensemble_size
     if ensemble_size > 15:
         logging.warning("Running with large ensemble size will be slow.")
@@ -226,7 +219,6 @@ if "__main__" == __name__:
     # Print out config
     logging.info(
         f"Inference settings: checkpoint = `{checkpoint_path}`, "
-        f"with denoise_steps = {denoise_steps or pipe.default_denoising_steps}, "
         f"ensemble_size = {ensemble_size}, "
         f"processing resolution = {processing_res or pipe.default_processing_resolution}, "
         f"seed = {seed}; "
@@ -245,7 +237,6 @@ if "__main__" == __name__:
             # Predict depth
             pipe_out = pipe(
                 input_image,
-                denoising_steps=denoise_steps,
                 ensemble_size=ensemble_size,
                 processing_res=processing_res,
                 match_input_res=match_input_res,

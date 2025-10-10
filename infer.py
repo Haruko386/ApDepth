@@ -66,7 +66,6 @@ if "__main__" == __name__:
         "--base_data_dir",
         type=str,
         default="/root/Dataset",
-        required=True,
         help="Path to base data directory.",
     )
 
@@ -75,12 +74,6 @@ if "__main__" == __name__:
     )
 
     # inference setting
-    parser.add_argument(
-        "--denoise_steps",
-        type=int,
-        default=50,  # quantitative evaluation uses 50 steps
-        help="Diffusion denoising steps, more steps results in higher accuracy but slower inference speed.",
-    )
     parser.add_argument(
         "--ensemble_size",
         type=int,
@@ -122,7 +115,6 @@ if "__main__" == __name__:
     base_data_dir = args.base_data_dir
     output_dir = args.output_dir
 
-    denoise_steps = args.denoise_steps
     ensemble_size = args.ensemble_size
     if ensemble_size > 15:
         logging.warning("Running with large ensemble size will be slow.")
@@ -144,7 +136,6 @@ if "__main__" == __name__:
     # Print out config
     logging.info(
         f"Inference settings: checkpoint = `{checkpoint_path}`, "
-        f"with denoise_steps = {denoise_steps}, ensemble_size = {ensemble_size}, "
         f"processing resolution = {processing_res}, seed = {seed}; "
         f"dataset config = `{dataset_config}`."
     )
@@ -236,7 +227,6 @@ if "__main__" == __name__:
             # Predict depth
             pipe_out = pipe(
                 input_image,
-                denoising_steps=denoise_steps,
                 ensemble_size=ensemble_size,
                 processing_res=processing_res,
                 match_input_res=match_input_res,
