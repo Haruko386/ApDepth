@@ -2,11 +2,6 @@
 
 This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVPR 2024 Best Paper: [**Repurposing Diffusion-Based Image Generators for Monocular Depth Estimation**](https://arxiv.org/abs/2312.02145)
 
-<!-- [![Website](doc/badges/badge-website.svg)](https://marigoldmonodepth.github.io)
-[![Paper](https://img.shields.io/badge/arXiv-PDF-b31b1b)](https://arxiv.org/abs/2312.02145)
-[![Hugging Face (LCM) Space](https://img.shields.io/badge/🤗%20Hugging%20Face%20(LCM)-Space-yellow)](https://huggingface.co/spaces/prs-eth/marigold-lcm)
-[![Hugging Face (LCM) Model](https://img.shields.io/badge/🤗%20Hugging%20Face%20(LCM)-Model-green)](https://huggingface.co/prs-eth/marigold-lcm-v1-0)
-[![Open In Colab](doc/badges/badge-colab.svg)](https://colab.research.google.com/drive/12G8reD13DdpMie5ZQlaFNo2WCGeNUH-u?usp=sharing) -->
 [![Website](doc/badges/badge-website.svg)](https://haruko386.github.io/research)
 [![License](https://img.shields.io/badge/License-Apache--2.0-929292)](https://www.apache.org/licenses/LICENSE-2.0)
 [![Static Badge](https://img.shields.io/badge/build-Haruko386-brightgreen?style=flat&logo=steam&logoColor=white&logoSize=auto&label=steam&labelColor=black&color=gray&cacheSeconds=3600)](https://steamcommunity.com/profiles/76561198217881431/)
@@ -21,7 +16,8 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 >We present **ApDepth**, a diffusion model, and associated fine-tuning protocol for monocular depth estimation. Based on Marigold. Its core innovation lies in addressing the deficiency of diffusion models in feature representation capability. Our model followed Marigold, derived from Stable Diffusion and fine-tuned with synthetic data: Hypersim and VKitti, achieved ideal results in object edge refinement.
 
 ## 📢 News
-- 2025-09-23: We change Marigold from `Stochastic multi-step generation` to `Deterministic one-step perception`
+- 2025-10-09: We propose a novel diffusion-based deep estimation framework guided by pre-trained models.
+- 2025-09-23: We change Marigold from **Stochastic multi-step generation** to **Deterministic one-step perception**
 - 2025-08-10: Trying to make some optimizations in Feature Expression<br>
 - 2025-05-08: Clone Marigold to local.<br>
 
@@ -63,8 +59,8 @@ cd ApDepth
  **Using Conda:** 
     Alternatively, create a Python native virtual environment and install dependencies into it:
 
-    conda create -n marigold python==3.12.9
-    conda activate marigold
+    conda create -n apdepth python==3.12.9
+    conda activate apdepth
     pip install -r requirements.txt
 
 Keep the environment activated before running the inference script. 
@@ -74,13 +70,9 @@ Activate the environment again after restarting the terminal session.
 
 ### 📷 Prepare images
 
-1. Use selected images from our paper:
+1. Use selected images under `input`
 
-    ```bash
-    bash script/download_sample_data.sh
-    ```
-
-1. Or place your images in a directory, for example, under `input/in-the-wild_example`, and run the following inference command.
+1. Or place your images in a directory, for example, under `input/test-image`, and run the following inference command.
 
 ### 🎮 Run inference with paper setting
 
