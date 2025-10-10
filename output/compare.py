@@ -53,7 +53,7 @@ if __name__ == "__main__":
     bin_file = "/root/Marigold/output/train_marigold/checkpoint/latest/unet/diffusion_pytorch_model.bin"  # 替换为你的.bin文件路径
     # bin_file = "/root/Marigold_output/备份（第一次修改FFT）/train_marigold/checkpoint/latest/unet/diffusion_pytorch_model.bin"  # 替换为你的.bin文件路径
     safetensor_file = "/root/.cache/huggingface/hub/models--prs-eth--marigold-v1-0/snapshots/f4fc453d7d217cbe30ddcad3eb311d1ad9a11c4c/unet/diffusion_pytorch_model.safetensors"  # 替换为你的.safetensors文件路径
-    
+    # safetensor_file = "/root/Marigold/output/convert/diffusion_pytorch_model.safetensors"
     print(f"比较 {bin_file} 和 {safetensor_file}:")
     result = compare_bin_safetensor(bin_file, safetensor_file)
     
