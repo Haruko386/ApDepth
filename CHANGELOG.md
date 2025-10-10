@@ -1,6 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+
+----------
+
+## [ApDepth-v1-1] - 2025-10-09
+> We use a pretrained model as a "teacher" to "teach" `stable diffusion 2-1` to generate Depth Map.
+
+**Our new training Framework be like:**
+
+<a><img src="./doc/train.png" alt="Framework" align=center></a>
+
+**Inference Framework be like:**
+
+<a><img src="./doc/infer.png" alt="Framework" align=center></a>
+
 ## [ApDepth-v1-0] - 2025-09-23
 ### Added
 >We change Marigold from `Stochastic multi-step generation` to `Deterministic one-step perception`. And achieve the same result.
