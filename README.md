@@ -23,7 +23,7 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 
 ## 🚀 Usage
 
-**We offer several ways to interact with Marigold**:
+**We offer several ways to interact with ApDepth**:
 
 1. A free online interactive demo is available here: <a href="https://huggingface.co/spaces/developy/ApDepth"><img src="https://img.shields.io/badge/🤗%20Hugging%20Face-Demo-purple" height="18"></a>
 
@@ -81,8 +81,7 @@ This setting corresponds to our paper. For academic comparison, please run with 
 ```bash
 python run.py \
     --checkpoint prs-eth/marigold-v1-0 \
-    --denoise_steps 50 \
-    --ensemble_size 10 \
+    --ensemble_size 1 \
     --input_rgb_dir input/in-the-wild_example \
     --output_dir output/in-the-wild_example
 ```
@@ -95,7 +94,6 @@ The default settings are optimized for the best result. However, the behavior of
 
 - Trade-offs between the **accuracy** and **speed** (for both options, larger values result in better accuracy at the cost of slower inference.)
   - `--ensemble_size`: Number of inference passes in the ensemble. For LCM `ensemble_size` is more important than `denoise_steps`. Default: ~~10~~ 5 (for LCM).
-  - `--denoise_steps`: Number of denoising steps of each inference pass. For the original (DDIM) version, it's recommended to use 10-50 steps, while for LCM 1-4 steps. When unassigned (`None`), will read default setting from model config. Default: ~~10 4 (for LCM)~~ `None`.
 
 - By default, the inference script resizes input images to the *processing resolution*, and then resizes the prediction back to the original resolution. This gives the best quality, as Stable Diffusion, from which Marigold is derived, performs best at 768x768 resolution.  
   
@@ -122,8 +120,6 @@ Alternatively, use the following script to download the checkpoint weights local
 
 ```bash
 bash script/download_weights.sh marigold-v1-0
-# or LCM checkpoint
-bash script/download_weights.sh marigold-lcm-v1-0
 ```
 
 At inference, specify the checkpoint path:
@@ -131,8 +127,7 @@ At inference, specify the checkpoint path:
 ```bash
 python run.py \
     --checkpoint checkpoint/marigold-v1-0 \
-    --denoise_steps 50 \
-    --ensemble_size 10 \
+    --ensemble_size 1 \
     --input_rgb_dir input/in-the-wild_example\
     --output_dir output/in-the-wild_example
 ```
@@ -215,17 +210,16 @@ Please refer to [this](CONTRIBUTING.md) instruction.
 
 
 ## 🎓 Citation
-Waitting for publishing⏱️
-<!-- Please cite our paper:
+Please cite our paper:
 
 ```bibtex
-@InProceedings{ke2023repurposing,
-      title={Repurposing Diffusion-Based Image Generators for Monocular Depth Estimation},
-      author={Bingxin Ke and Anton Obukhov and Shengyu Huang and Nando Metzger and Rodrigo Caye Daudt and Konrad Schindler},
-      booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-      year={2024}
+@InProceedings{haruko26apdepth,
+      title={ApDepth: Aiming for Precise Monocular Depth Estimation Based on Diffusion Models},
+      author={Haruko386 and Yuan Shuai},
+      booktitle = {Under review},
+      year={2026}
 }
-``` -->
+```
 
 ## 🎫 License
 
