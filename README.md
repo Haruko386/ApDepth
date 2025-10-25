@@ -16,6 +16,7 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 >We present **ApDepth**, a diffusion model, and associated fine-tuning protocol for monocular depth estimation. Based on Marigold. Its core innovation lies in addressing the deficiency of diffusion models in feature representation capability. Our model followed Marigold, derived from Stable Diffusion and fine-tuned with synthetic data: Hypersim and VKitti, achieved ideal results in object edge refinement.
 
 ## 📢 News
+- 2025-10-25: Inspired by DepthMaster, we propose a two-stage loss function training strategy based on `Apepth V1-0`. In the first stage, we perform foundational training using MSE loss. In the second stage, we learn edge structures through FFT loss. Based on this, we introduce Apepth V1-1.
 - 2025-10-09: We propose a novel diffusion-based deep estimation framework guided by pre-trained models.
 - 2025-09-23: We change Marigold from **Stochastic multi-step generation** to **Deterministic one-step perception**
 - 2025-08-10: Trying to make some optimizations in Feature Expression<br>
@@ -32,6 +33,9 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 3. Local development instructions with this codebase are given below.
 
 ## 🛠️ Setup
+The Model was trained on:
+
+- Ubuntu 22.04 LTS, Python 3.12.9,  CUDA 11.8, GeForce RTX 4090 (pip)
 
 The inference code was tested on:
 
