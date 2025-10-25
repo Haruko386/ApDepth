@@ -93,7 +93,7 @@ You can find all results in `output/in-the-wild_example`. Enjoy!
 The default settings are optimized for the best result. However, the behavior of the code can be customized:
 
 - Trade-offs between the **accuracy** and **speed** (for both options, larger values result in better accuracy at the cost of slower inference.)
-  - `--ensemble_size`: Number of inference passes in the ensemble. For LCM `ensemble_size` is more important than `denoise_steps`. Default: ~~10~~ 5 (for LCM).
+  - `--ensemble_size`: Number of inference passes in the ensemble. 
 
 - By default, the inference script resizes input images to the *processing resolution*, and then resizes the prediction back to the original resolution. This gives the best quality, as Stable Diffusion, from which Marigold is derived, performs best at 768x768 resolution.  
   
@@ -157,6 +157,12 @@ bash script/eval/11_infer_nyu.sh
 # Evaluate predictions
 bash script/eval/12_eval_nyu.sh
 ```
+
+Or you can just run
+```bash
+bash script/eval/00_test_all.sh
+```
+You can get the result under `output/eval`
 
 Note: although the seed has been set, the results might still be slightly different on different hardware.
 
