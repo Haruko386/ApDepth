@@ -142,12 +142,12 @@ class MarigoldPipeline(DiffusionPipeline):
         self._fft_masks = {}
         
         da2_config = {
-            'encoder': 'vits',  # 'vits', 'vitb', 'vitl', 'vitg'
-            'features': 64,
-            'out_channels': [48, 96, 192, 384],
+            'encoder': 'vitl',  # 'vits' 'vitb', 'vitl', 'vitg'
+            'features': 256, # '64' '128', '256','384'
+            'out_channels': [256, 512, 1024, 1024], # [48, 96, 192, 384], [96, 192, 384, 768], [256, 512, 1024, 1024], [1536, 1536, 1536, 1536]
         }
         
-        # 初始化 DA2 模型
+        # init DA2
         if da2_config is not None:
             self.da2 = DepthAnythingV2(**da2_config)
             self.da2.load_state_dict(torch.load(f'/root/Marigold/DA2/checkpoints/depth_anything_v2_{da2_config["encoder"]}.pth', map_location='cpu'))

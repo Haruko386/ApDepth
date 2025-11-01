@@ -111,7 +111,7 @@ class MarigoldTrainer:
 
         # Loss
         self.loss = get_loss(loss_name=self.cfg.loss.name, **self.cfg.loss.kwargs)
-        self.latent_freq_loss = get_loss(loss_name=self.cfg.latent_freq_loss.name, ** self.cfg.latent_freq_loss.kwargs)
+        self.grad_loss = get_loss(loss_name=self.cfg.grad_loss.name, ** self.cfg.grad_loss.kwargs)
 
         # Training noise scheduler
         self.training_noise_scheduler: DDPMScheduler = DDPMScheduler.from_pretrained(
@@ -131,7 +131,7 @@ class MarigoldTrainer:
 
         # Eval metrics
         self.metric_funcs = [getattr(metric, _met) for _met in cfg.eval.eval_metrics]
-        self.train_metrics = MetricTracker(*["loss", "latent_freq_loss"])
+        self.train_metrics = MetricTracker(*["loss", "grad_loss"])
         self.val_metrics = MetricTracker(*[m.__name__ for m in self.metric_funcs])
         # main metric for best checkpoint saving
         self.main_val_metric = cfg.validation.main_val_metric
@@ -230,7 +230,7 @@ class MarigoldTrainer:
                     raise NotImplementedError
 
                 batch_size = rgb.shape[0]
-                
+                # 这里开始改动
                 with torch.no_grad():
                     # Encode image
                     rgb_latent = self.model.encode_rgb(rgb)  # [B, 4, h, w]
@@ -258,38 +258,36 @@ class MarigoldTrainer:
 
                 target = gt_depth_latent
 
-                loss = 0.0
-
-                if self.effective_iter <= 24000: 
-                    # Masked latent loss (MSE loss)
-                    if self.gt_mask_type is not None:
-                        latent_loss = self.loss(
-                            depth_pred[valid_mask_down].float(),
-                            target[valid_mask_down].float(),
-                        )
-                    else:
-                        latent_loss = self.loss(depth_pred.float(), target.float())
-
-                    loss = latent_loss.mean()
-                    self.train_metrics.update("loss", loss.item())
+                # Masked latent loss (MSE loss)
+                if self.gt_mask_type is not None:
+                    latent_loss = self.loss(
+                        depth_pred[valid_mask_down].float(),
+                        target[valid_mask_down].float(),
+                    )
                 else:
-                    # FFT latent loss (FFT loss)
-                    if self.gt_mask_type is not None:
-                        freq_loss = self.latent_freq_loss(
-                            depth_pred.float(),
-                            target.float(),
-                            valid_mask_down
-                        )
-                    else:
-                        freq_loss = self.latent_freq_loss(
-                            depth_pred.float(),
-                            target.float(),
-                            mask=None
-                        )
+                    latent_loss = self.loss(depth_pred.float(), target.float())
 
-                    self.train_metrics.update("latent_freq_loss", freq_loss.item())
-                    lambda_freq = self.cfg.latent_freq_loss.get('lambda', 1.0)
-                    loss = lambda_freq * freq_loss
+                loss = latent_loss.mean()
+                self.train_metrics.update("loss", loss.item())
+
+                # FFT latent loss (FFT loss)
+                # if self.gt_mask_type is not None:
+                #     freq_loss = self.grad_loss(
+                #         depth_pred.float(),
+                #         target.float(),
+                #         valid_mask_down
+                #     )
+                # else:
+                #     freq_loss = self.grad_loss(
+                #         depth_pred.float(),
+                #         target.float(),
+                #         mask=None
+                #     )
+
+                # self.train_metrics.update("grad_loss", freq_loss.item())
+                # lambda_freq = self.cfg.grad_loss.get('lambda', 1.0)
+                
+                # loss = lambda_freq * freq_loss
 
 
                 loss = loss / self.gradient_accumulation_steps
@@ -310,7 +308,7 @@ class MarigoldTrainer:
 
                     # Log to tensorboard
                     accumulated_metrics = self.train_metrics.result()
-                    loss_to_log = accumulated_metrics.get("latent_freq_loss", 0.0) if self.effective_iter > 24000 else accumulated_metrics.get("loss", 0.0) # Only ACMer would do this
+                    loss_to_log = accumulated_metrics.get("grad_loss", 0.0)
 
                     tb_logger.log_dic(
                         {
@@ -330,7 +328,7 @@ class MarigoldTrainer:
                         global_step=self.effective_iter,
                     )
                     logging.info(
-                        f"iter {self.effective_iter:5d} (epoch {epoch:2d}): loss={loss_to_log:.5f}"
+                        f"iter {self.effective_iter:5d} (epoch {epoch:2d}): loss={loss_to_log:.9f}"
                     )
                     self.train_metrics.reset()
 

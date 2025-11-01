@@ -3,8 +3,15 @@ dataset:
   - name: nyu_v2
     disp_name: nyu_train_full
     dir: nyuv2/nyu_labeled_extracted.tar
-    filenames: data_split/nyu/labeled/filename_list_train.txt
+    filenames: data_split/nyu/labeled/filename_list_test.txt
     eigen_valid_mask: true
+    
+  # - name: kitti
+  #   disp_name: kitti_val800_from_eigen_train
+  #   dir: /root/Datasets/kitti/kitti_sampled_val_800.tar
+  #   filenames: data_split/kitti/eigen_test_files_with_gt.txt
+  #   kitti_bm_crop: true
+  #   valid_mask_crop: eigen
   # 测试集用nyu，真需要吗？我持怀疑态度，为什么不直接run完跑eval呢？
 
   # - name: vkitti
@@ -24,12 +31,7 @@ dataset:
 
 
 
-  # - name: kitti
-  #   disp_name: kitti_val800_from_eigen_train
-  #   dir: kitti/kitti_sampled_val_800.tar
-  #   filenames: data_split/kitti/eigen_val_from_train_800.txt
-  #   kitti_bm_crop: true
-  #   valid_mask_crop: eigen
+  
 
   # Smaller subsets for faster validation during training
   # The first dataset is used to calculate main eval metric.

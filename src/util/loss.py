@@ -24,154 +24,29 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 def get_loss(loss_name, **kwargs):
-    # 添加参数安全检查
-    safe_kwargs = kwargs if kwargs is not None else {}
-    
     if "silog_mse" == loss_name:
-        criterion = SILogMSELoss(**safe_kwargs)
+        criterion = SILogMSELoss(**kwargs)
     elif "silog_rmse" == loss_name:
-        criterion = SILogRMSELoss(**safe_kwargs)
+        criterion = SILogRMSELoss(**kwargs)
     elif "mse_loss" == loss_name:
-        criterion = torch.nn.MSELoss(**safe_kwargs)
+        criterion = torch.nn.MSELoss(**kwargs)
     elif "l1_loss" == loss_name:
-        criterion = torch.nn.L1Loss(**safe_kwargs)
+        criterion = torch.nn.L1Loss(**kwargs)
     elif "l1_loss_with_mask" == loss_name:
-        criterion = L1LossWithMask(**safe_kwargs)
+        criterion = L1LossWithMask(**kwargs)
     elif "mean_abs_rel" == loss_name:
         criterion = MeanAbsRelLoss()
-    elif "huber_loss" == loss_name:
-        delta = safe_kwargs.get('delta', 1.0)
-        reduction = safe_kwargs.get('reduction', 'mean')
-        criterion = HuberLoss(delta=delta, reduction=reduction)
-    elif "mse_grad" == loss_name:
-        # 新增：均方 + 梯度损失
-        grad_weight = safe_kwargs.get("grad_weight", 1.0)
-        reduction = safe_kwargs.get("reduction", "mean")
-        criterion = MSEGradLoss(grad_weight=grad_weight, reduction=reduction)
+    elif "latent_freq_loss" == loss_name:
+        criterion = LatentFrequencyLoss(**kwargs)
     else:
         raise NotImplementedError
 
     return criterion
 
-class MSEGradLoss(nn.Module):
-    def __init__(self, grad_weight=1.0, reduction="mean"):
-        super().__init__()
-        self.grad_weight = float(grad_weight)
-        assert reduction in ("mean", "sum", None)
-        self.reduction = reduction
-
-    @staticmethod
-    def _compute_gradients(x):
-        gx = x[:, :, :, 1:] - x[:, :, :, :-1]
-        gy = x[:, :, 1:, :] - x[:, :, :-1, :]
-        return gx, gy
-
-    def forward(self, pred, gt, valid_mask=None):
-        """
-        pred, gt: can be
-          - full tensors [B,C,H,W]
-          - already masked flattened tensors (1D or N-D where shapes match), in which case valid_mask should be None
-        valid_mask: boolean tensor with same shape as pred/gt when they are full [B,C,H,W]
-        """
-        # case 1: inputs are already flattened/selected (e.g., pred = pred_tensor[mask])
-        if valid_mask is None and pred.shape != gt.shape:
-            # assume both pred and gt are flattened vectors of same length (由训练代码索引产生)
-            diff = pred - gt
-            mse = (diff ** 2).mean()
-            # no gradient loss can be computed sensibly in this mode => return mse
-            total = mse
-            if self.reduction == "sum":
-                total = mse * diff.numel()
-            return total
-
-        # case 2: shapes match (full tensors) -> compute masked or full loss
-        if pred.shape != gt.shape:
-            raise ValueError("pred and gt must have same shape unless they are already masked vectors.")
-
-        # make sure float
-        pred = pred.float()
-        gt = gt.float()
-
-        if valid_mask is not None:
-            # valid_mask: boolean with same shape [B,C,H,W] or broadcastable
-            # mask out invalid elements before computing mse
-            # to avoid divide-by-zero, compute number of valid elements
-            valid_mask_bool = valid_mask.bool()
-            if valid_mask_bool.numel() == 0 or valid_mask_bool.sum() == 0:
-                # no valid pixels: return zero loss
-                return torch.tensor(0.0, device=pred.device, dtype=pred.dtype)
-
-            diff = pred - gt
-            diff_valid = diff[valid_mask_bool]
-            mse = (diff_valid ** 2)
-            if self.reduction == "mean":
-                mse_term = mse.mean()
-            elif self.reduction == "sum":
-                mse_term = mse.sum()
-            else:
-                mse_term = mse
-
-            # 梯度损失：在 valid 区域对相邻像素都为 valid 的位置计算
-            # 计算 pred/gt 的梯度
-            pred_gx, pred_gy = self._compute_gradients(pred)
-            gt_gx, gt_gy = self._compute_gradients(gt)
-
-            # 构造对应的 valid mask for gradients（对应相邻对都为 valid）
-            # valid_mask shape: [B,C,H,W]
-            mask_x = valid_mask_bool[:, :, :, 1:] & valid_mask_bool[:, :, :, :-1]  # 对应 gx
-            mask_y = valid_mask_bool[:, :, 1:, :] & valid_mask_bool[:, :, :-1, :]  # 对应 gy
-
-            # 计算 L1 损失在 mask_x, mask_y 上
-            gx_diff = torch.abs(pred_gx - gt_gx)
-            gy_diff = torch.abs(pred_gy - gt_gy)
-
-            # 如果没有有效的 gradient mask，梯度项为零
-            gx_valid = gx_diff[mask_x] if mask_x.sum() > 0 else torch.tensor(0.0, device=pred.device)
-            gy_valid = gy_diff[mask_y] if mask_y.sum() > 0 else torch.tensor(0.0, device=pred.device)
-
-            # 聚合
-            if isinstance(gx_valid, torch.Tensor) and gx_valid.numel() > 0:
-                gx_term = gx_valid.mean() if self.reduction == "mean" else gx_valid.sum()
-            else:
-                gx_term = torch.tensor(0.0, device=pred.device)
-
-            if isinstance(gy_valid, torch.Tensor) and gy_valid.numel() > 0:
-                gy_term = gy_valid.mean() if self.reduction == "mean" else gy_valid.sum()
-            else:
-                gy_term = torch.tensor(0.0, device=pred.device)
-
-            grad_term = (gx_term + gy_term) * 0.5  # 合并 x,y
-
-            total = mse_term + self.grad_weight * grad_term
-            # print("MSE:", mse_term.item(), "Grad:", self.grad_weight * grad_term.item()) # for debug only
-            return total
-
-        else:
-            # valid_mask is None and pred/gt are full tensors -> compute over all pixels
-            diff = pred - gt
-            if self.reduction == "mean":
-                mse_term = (diff ** 2).mean()
-            elif self.reduction == "sum":
-                mse_term = (diff ** 2).sum()
-            else:
-                mse_term = (diff ** 2)
-
-            pred_gx, pred_gy = self._compute_gradients(pred)
-            gt_gx, gt_gy = self._compute_gradients(gt)
-
-            gx_diff = torch.abs(pred_gx - gt_gx)
-            gy_diff = torch.abs(pred_gy - gt_gy)
-
-            gx_term = gx_diff.mean() if self.reduction == "mean" else gx_diff.sum()
-            gy_term = gy_diff.mean() if self.reduction == "mean" else gy_diff.sum()
-            grad_term = (gx_term + gy_term) * 0.5
-
-            total = mse_term + self.grad_weight * grad_term
-            # print("MSE:", mse_term.item(), "Grad:", self.grad_weight * grad_term.item()) # for debug only
-            return total
 
 class L1LossWithMask:
     def __init__(self, batch_reduction=False):
@@ -237,55 +112,6 @@ class SILogMSELoss:
         if self.batch_reduction:
             loss = loss.mean()
         return loss
-    
-# class HuberLoss:
-#     def __init__(self, delta=0.5):
-#         self.delta = delta
-        
-#     def __call__(self, depth_pred, depth_gt, valid_mask=None):
-#         # huber 损失
-#         # 计算预测值与真实值的差值
-#         diff = depth_gt - depth_pred
-        
-#         # 计算绝对值和差值的平方
-#         abs_diff = torch.abs(diff)
-#         squared_diff = diff ** 2
-        
-#         # 使用条件语句选择L2损失或L1损失
-#         loss = torch.where(abs_diff > self.delta, 0.5 * squared_diff, self.delta * abs_diff - 0.5 * self.delta ** 2)
-        
-#         # 返回所有样本损失的总和
-#         if valid_mask is not None:
-#             return torch.mean(loss[valid_mask])
-#         else:
-#             return torch.mean(loss)
-
-class HuberLoss(nn.Module):
-    def __init__(self, delta=0.5, reduction='mean'):
-        super().__init__()
-        self.delta = delta
-        self.reduction = reduction
-        
-    def forward(self, depth_pred, depth_gt, valid_mask=None):
-        # 计算预测值与真实值的差值
-        diff = depth_gt - depth_pred
-        
-        # 计算绝对差值
-        abs_diff = torch.abs(diff)
-        
-        # 当 |diff| <= delta 时，使用平方项
-        # 当 |diff| > delta 时，使用线性项
-        loss = torch.where(
-            abs_diff <= self.delta,
-            0.5 * diff ** 2,
-            self.delta * (abs_diff - 0.5 * self.delta)
-        )
-        
-        # 应用有效掩码（如果提供）
-        if valid_mask is not None:
-            loss = loss[valid_mask]
-        
-        return loss.mean()
 
 class SILogRMSELoss:
     def __init__(self, lamb, log_pred=True):
@@ -301,25 +127,6 @@ class SILogRMSELoss:
         # self.alpha = alpha
         self.pred_in_log = log_pred
 
-    # def __call__(self, depth_pred, depth_gt, valid_mask):
-    #     log_depth_pred = depth_pred if self.pred_in_log else torch.log(depth_pred)
-    #     log_depth_gt = torch.log(depth_gt)
-    #     # borrowed from https://github.com/aliyun/NeWCRFs
-    #     # diff = log_depth_pred[valid_mask] - log_depth_gt[valid_mask]
-    #     # return torch.sqrt((diff ** 2).mean() - self.lamb * (diff.mean() ** 2)) * self.alpha
-
-    #     diff = log_depth_pred - log_depth_gt
-    #     if valid_mask is not None:
-    #         diff[~valid_mask] = 0
-    #         n = valid_mask.sum((-1, -2))
-    #     else:
-    #         n = depth_gt.shape[-2] * depth_gt.shape[-1]
-
-    #     diff2 = torch.pow(diff, 2)
-    #     first_term = torch.sum(diff2, (-1, -2)) / n
-    #     second_term = self.lamb * torch.pow(torch.sum(diff, (-1, -2)), 2) / (n**2)
-    #     loss = torch.sqrt(first_term - second_term).mean()
-    #     return loss
     def __call__(self, depth_pred, depth_gt, valid_mask):
         valid_mask = valid_mask.detach()
         log_depth_pred = torch.log(depth_pred[valid_mask])
@@ -383,3 +190,72 @@ class SSIM(nn.Module):
         SSIM_d = (mu_x ** 2 + mu_y ** 2 + self.C1) * (sigma_x + sigma_y + self.C2)
 
         return torch.clamp((1 - SSIM_n / SSIM_d) / 2, 0, 1)
+
+
+class LatentFrequencyLoss(nn.Module):
+    def __init__(self, loss_type='l1', high_pass_weight=1.0, eps=1e-8):
+        super().__init__()
+        self.loss_type = loss_type
+        self.high_pass_weight = high_pass_weight
+        self.eps = eps
+        self.loss_fn = F.l1_loss if loss_type == 'l1' else F.mse_loss
+        self.weights_cache = {}
+
+    def create_high_pass_weights(self, shape, device):
+        if shape in self.weights_cache:
+            return self.weights_cache[shape]
+
+        b, c, h, w = shape
+
+        y_coords, x_coords = torch.meshgrid(
+            torch.arange(h, device=device, dtype=torch.float32),
+            torch.arange(w, device=device, dtype=torch.float32),
+            indexing='ij'
+        )
+        
+        center_y, center_x = h // 2, w // 2
+        
+        dist_from_center = torch.sqrt(
+            (y_coords - center_y)**2 + (x_coords - center_x)**2
+        )
+
+        max_dist = torch.sqrt(torch.tensor(center_y**2 + center_x**2))
+        normalized_dist = dist_from_center / (max_dist + self.eps)
+        
+        weights = 1.0 + self.high_pass_weight * normalized_dist
+
+        weights = weights.view(1, 1, h, w)
+        self.weights_cache[shape] = weights
+        return weights
+
+    def forward(self, pred_latent, target_latent, mask=None):
+        if mask is not None:
+            pred_latent = torch.where(mask, pred_latent, 0.0)
+            target_latent = torch.where(mask, target_latent, 0.0)
+
+        fft_pred = torch.fft.fft2(pred_latent, dim=(-2, -1))
+        fft_target = torch.fft.fft2(target_latent, dim=(-2, -1))
+        
+        fft_pred_shifted = torch.fft.fftshift(fft_pred, dim=(-2, -1))
+        fft_target_shifted = torch.fft.fftshift(fft_target, dim=(-2, -1))
+
+        fft_pred_mag = torch.abs(fft_pred_shifted)
+        fft_target_mag = torch.abs(fft_target_shifted)
+
+        base_loss = self.loss_fn(
+            fft_pred_mag, 
+            fft_target_mag, 
+            reduction='none'
+        )
+
+        if self.high_pass_weight > 0:
+            weights = self.create_high_pass_weights(
+                pred_latent.shape, 
+                pred_latent.device
+            )
+            base_loss = base_loss * weights
+            
+        if mask is not None:
+            return torch.mean(base_loss)
+        else:
+            return torch.mean(base_loss)

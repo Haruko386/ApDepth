@@ -130,7 +130,7 @@ At inference, specify the checkpoint path:
 
 ```bash
 python run.py \
-    --checkpoint checkpoint/marigold-v1-0 \
+    --checkpoints checkpoint/marigold-v1-0 \
     --ensemble_size 1 \
     --input_rgb_dir input/in-the-wild_example\
     --output_dir output/in-the-wild_example
@@ -189,7 +189,9 @@ Download Stable Diffusion v2 [checkpoint](https://huggingface.co/stabilityai/sta
 
 Prepare for [Hypersim](https://github.com/apple/ml-hypersim) and [Virtual KITTI 2](https://europe.naverlabs.com/research/computer-vision/proxy-virtual-worlds-vkitti-2/) datasets and save into `${BASE_DATA_DIR}`. Please refer to [this README](script/dataset_preprocess/hypersim/README.md) for Hypersim preprocessing.
 
-Run training script
+------------
+
+**Run first stage training script**
 
 ```bash
 python train.py --config config/train_marigold.yaml --no_wandb
@@ -201,7 +203,9 @@ Resume from a checkpoint, e.g.
 python train.py --resume_run output/train_marigold/checkpoint/latest --no_wandb
 ```
 
-Evaluating results
+------------
+
+**Evaluating results**
 
 Only the U-Net is updated and saved during training. To use the inference pipeline with your training result, replace `unet` folder in Marigold checkpoints with that in the `checkpoint` output folder. Then refer to [this section](#evaluation) for evaluation.
 

@@ -35,7 +35,6 @@ from marigold import MarigoldPipeline
 EXTENSION_LIST = [".jpg", ".jpeg", ".png"]
 
 from torchvision import transforms
-from marigold.modules.unet_2d_condition import UNet2DConditionModel
 
 
 if "__main__" == __name__:

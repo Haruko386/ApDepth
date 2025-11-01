@@ -105,7 +105,7 @@ if "__main__" == __name__:
 
     args = parser.parse_args()
     print("\n=== Arguments Summary ===")
-    max_len = max(len(arg) for arg in vars(args))  # 计算最长的参数名用于对齐
+    max_len = max(len(arg) for arg in vars(args))
     for arg in vars(args):
         print(f"{arg.ljust(max_len)} : {getattr(args, arg)}")
     resume_run = args.resume_run
@@ -168,27 +168,26 @@ if "__main__" == __name__:
     logging.debug(f"config: {cfg}")
 
     # Initialize wandb
-    # bro我目前用不到你
-    # if not args.no_wandb:
-    #     if resume_run is not None:
-    #         wandb_id = load_wandb_job_id(out_dir_run)
-    #         wandb_cfg_dic = {
-    #             "id": wandb_id,
-    #             "resume": "must",
-    #             **cfg.wandb,
-    #         }
-    #     else:
-    #         wandb_cfg_dic = {
-    #             "config": dict(cfg),
-    #             "name": job_name,
-    #             "mode": "online",
-    #             **cfg.wandb,
-    #         }
-    #     wandb_cfg_dic.update({"dir": out_dir_run})
-    #     wandb_run = init_wandb(enable=True, **wandb_cfg_dic)
-    #     save_wandb_job_id(wandb_run, out_dir_run)
-    # else:
-    #     init_wandb(enable=False)
+    if not args.no_wandb:
+        if resume_run is not None:
+            wandb_id = load_wandb_job_id(out_dir_run)
+            wandb_cfg_dic = {
+                "id": wandb_id,
+                "resume": "must",
+                **cfg.wandb,
+            }
+        else:
+            wandb_cfg_dic = {
+                "config": dict(cfg),
+                "name": job_name,
+                "mode": "online",
+                **cfg.wandb,
+            }
+        wandb_cfg_dic.update({"dir": out_dir_run})
+        wandb_run = init_wandb(enable=True, **wandb_cfg_dic)
+        save_wandb_job_id(wandb_run, out_dir_run)
+    else:
+        init_wandb(enable=False)
 
     # Tensorboard (should be initialized after wandb)
     tb_logger.set_dir(out_dir_tb)
@@ -198,7 +197,6 @@ if "__main__" == __name__:
     # -------------------- Device --------------------
     cuda_avail = torch.cuda.is_available() and not args.no_cuda
     device = torch.device("cuda" if cuda_avail else "cpu")
-    # device = "cpu"  # 测试时打开用cpu
     logging.info(f"device = {device}")
 
     # -------------------- Snapshot of code and config --------------------
@@ -309,32 +307,24 @@ if "__main__" == __name__:
             num_workers=cfg.dataloader.num_workers,
         )
         val_loaders.append(_val_loader)
-    # 我也不知道这个是做什么的，但如果用hypersim数据集的话，可以打开这个？
-    # 不行就关掉，这个可视化基本没啥用(需要工作量的话就把这个打开)
+
     # Visualization dataset
-    # vis_loaders: List[DataLoader] = []
-    # for _vis_dic in cfg_data.vis:
-    #     _vis_dataset = get_dataset(
-    #         _vis_dic,
-    #         base_data_dir=base_data_dir,
-    #         mode=DatasetMode.EVAL,
-    #     )
-    #     _vis_loader = DataLoader(
-    #         dataset=_vis_dataset,
-    #         batch_size=1,
-    #         shuffle=False,
-    #         num_workers=cfg.dataloader.num_workers,
-    #     )
-    #     vis_loaders.append(_vis_loader)
+    vis_loaders: List[DataLoader] = []
+    for _vis_dic in cfg_data.vis:
+        _vis_dataset = get_dataset(
+            _vis_dic,
+            base_data_dir=base_data_dir,
+            mode=DatasetMode.EVAL,
+        )
+        _vis_loader = DataLoader(
+            dataset=_vis_dataset,
+            batch_size=1,
+            shuffle=False,
+            num_workers=cfg.dataloader.num_workers,
+        )
+        vis_loaders.append(_vis_loader)
 
     # -------------------- Model --------------------
-    # model_configs = {
-    #     'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
-    #     'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
-    #     'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]},
-    #     'vitg': {'encoder': 'vitg', 'features': 384, 'out_channels': [1536, 1536, 1536, 1536]}
-    # }
-     
     _pipeline_kwargs = cfg.pipeline.kwargs if cfg.pipeline.kwargs is not None else {}
     model = MarigoldPipeline.from_pretrained(
         os.path.join(base_ckpt_dir, cfg.model.pretrained_path), **_pipeline_kwargs
@@ -361,6 +351,7 @@ if "__main__" == __name__:
         out_dir_vis=out_dir_vis,
         accumulation_steps=accumulation_steps,
         val_dataloaders=val_loaders,
+        vis_dataloaders=vis_loaders,
     )
 
     # -------------------- Checkpoint --------------------
