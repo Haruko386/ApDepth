@@ -49,7 +49,7 @@ gt_depth_type: depth_raw_norm
 gt_mask_type: valid_mask_raw
 
 max_epoch: 10000  # a large enough number to ensure convergence
-max_iter: 24000 # usually converges at around 20k
+max_iter: 25000 # usually converges at around 20k
 
 optimizer:
   name: Adam
