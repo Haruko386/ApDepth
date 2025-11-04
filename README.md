@@ -11,7 +11,7 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 [Haruko386](https://haruko386.github.io/),
 [Shuai Yuan](https://syjz.teacher.360eol.com/teacherBasic/preview?teacherId=23776)
 
-![cover](doc/cover.jpg)
+![cover](doc/cover.png)
 
 >We present **ApDepth**, a diffusion model, and associated fine-tuning protocol for monocular depth estimation. Based on Marigold. Its core innovation lies in addressing the deficiency of diffusion models in feature representation capability. Our model followed Marigold, derived from Stable Diffusion and fine-tuned with synthetic data: Hypersim and VKitti, achieved ideal results in object edge refinement.
 
@@ -130,7 +130,7 @@ At inference, specify the checkpoint path:
 
 ```bash
 python run.py \
-    --checkpoints checkpoint/marigold-v1-0 \
+    --checkpoint checkpoints/marigold-v1-0 \
     --ensemble_size 1 \
     --input_rgb_dir input/in-the-wild_example\
     --output_dir output/in-the-wild_example
