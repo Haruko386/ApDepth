@@ -1,6 +1,6 @@
 # Last modified: 2025-01-14
 #
-# Copyright 2025 Ziyang Song, USTC. All rights reserved.
+# Copyright 2025 Jiawei Wang SJZU. All rights reserved.
 #
 # This file has been modified from the original version.
 # Original copyright (c) 2023 Bingxin Ke, ETH Zurich. All rights reserved.
@@ -18,8 +18,8 @@
 # limitations under the License.
 # --------------------------------------------------------------------------
 # If you find this code useful, we kindly ask you to cite our paper in your work.
-# Please find bibtex at: https://github.com/indu1ge/DepthMaster#-citation
-# More information about the method can be found at https://indu1ge.github.io/DepthMaster_page
+# Please find bibtex at: https://github.com/Haruko386/ApDepth
+# More information about the method can be found at https://haruko386.github.io/research
 # --------------------------------------------------------------------------
 
 import torch
