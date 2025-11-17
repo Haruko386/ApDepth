@@ -4,7 +4,6 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 
 [![Website](doc/badges/badge-website.svg)](https://haruko386.github.io/research)
 [![License](https://img.shields.io/badge/License-Apache--2.0-929292)](https://www.apache.org/licenses/LICENSE-2.0)
-[![Static Badge](https://img.shields.io/badge/build-Haruko386-brightgreen?style=flat&logo=steam&logoColor=white&logoSize=auto&label=steam&labelColor=black&color=gray&cacheSeconds=3600)](https://steamcommunity.com/profiles/76561198217881431/)
 [![Hugging Face Model](https://img.shields.io/badge/🤗%20Hugging%20Face-Model-green)](https://huggingface.co/developy/ApDepth)
 [![Hugging Face Demo](https://img.shields.io/badge/🤗%20Hugging%20Face-Demo-purple)](https://huggingface.co/spaces/developy/ApDepth)
 
@@ -99,7 +98,7 @@ The default settings are optimized for the best result. However, the behavior of
 - Trade-offs between the **accuracy** and **speed** (for both options, larger values result in better accuracy at the cost of slower inference.)
   - `--ensemble_size`: Number of inference passes in the ensemble. 
 
-- By default, the inference script resizes input images to the *processing resolution*, and then resizes the prediction back to the original resolution. This gives the best quality, as Stable Diffusion, from which Marigold is derived, performs best at 768x768 resolution.  
+- By default, the inference script resizes input images to the *processing resolution*, and then resizes the prediction back to the original resolution. This gives the best quality, as Stable Diffusion, from which ApDepth is derived, performs best at 768x768 resolution.  
   
   - `--processing_res`: the processing resolution; set as 0 to process the input resolution directly. When unassigned (`None`), will read default setting from model config. Default: ~~768~~ `None`.
   - `--output_processing_res`: produce output at the processing resolution instead of upsampling it to the input resolution. Default: False.
@@ -207,7 +206,7 @@ python train.py --resume_run output/train_marigold/checkpoint/latest --no_wandb
 
 **Evaluating results**
 
-Only the U-Net is updated and saved during training. To use the inference pipeline with your training result, replace `unet` folder in Marigold checkpoints with that in the `checkpoint` output folder. Then refer to [this section](#evaluation) for evaluation.
+Only the U-Net is updated and saved during training. To use the inference pipeline with your training result, replace `unet` folder in `train_apdepth` checkpoints with that in the `checkpoint` output folder. Then refer to [this section](#evaluation) for evaluation.
 
 **Note**: Although random seeds have been set, the training result might be slightly different on different hardwares. It's recommended to train without interruption.
 
