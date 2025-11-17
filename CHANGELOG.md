@@ -4,16 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ----------
 
+## [ApDepth-v1-1] - 2025-11-25
+> We present a new Loss_Function for our two stage training strats. We use `MSE_Loss` for stage one to
+> learn the whole information and stage two uses our propoesd `Latent_Frequence_Loss` to refine edge detail
+
+**Training Framework:**
+
+<a><img src="./doc/apdepth-v1-2/train.png" alt="Framework" align=center></a>
+
+**Inference Framework:**
+
+<a><img src="./doc/apdepth-v1-2/infer.png" alt="Framework" align=center></a>
+
 ## [ApDepth-v1-1] - 2025-10-09
 > We use a pretrained model as a "teacher" to "teach" `stable diffusion 2-1` to generate Depth Map.
 
-**Our new training Framework be like:**
+**Training Framework:**
 
-<a><img src="./doc/train.png" alt="Framework" align=center></a>
+<a><img src="./doc/apdepth-v1-1/train.png" alt="Framework" align=center></a>
 
-**Inference Framework be like:**
+**Inference Framework:**
 
-<a><img src="./doc/infer.png" alt="Framework" align=center></a>
+<a><img src="./doc/apdepth-v1-1/infer.png" alt="Framework" align=center></a>
 
 ## [ApDepth-v1-0] - 2025-09-23
 ### Added
