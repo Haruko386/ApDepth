@@ -118,12 +118,12 @@ The `HF_HOME` environment variable defines its location and can be overridden, e
 ```bash
 export HF_HOME=$(pwd)/cache
 ```
-
+<!-- 
 Alternatively, use the following script to download the checkpoint weights locally:
 
 ```bash
 bash script/download_weights.sh marigold-v1-0
-```
+``` -->
 
 At inference, specify the checkpoint path:
 
