@@ -1,7 +1,9 @@
-# An official reimplemented version of Marigold training script.
-# Last modified: 2024-08-16
+# Last modified: 2025-11-24
 #
-# Copyright 2023 Bingxin Ke, ETH Zurich. All rights reserved.
+# Copyright 2025 Jiawei Wang, SJZU. All rights reserved.
+# 
+# This file has been modified from the original version.
+# Original copyright (c) 2023 Bingxin Ke, ETH Zurich. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
