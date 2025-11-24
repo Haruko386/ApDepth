@@ -1,4 +1,4 @@
-# Last modified: 2025-01-14
+# Last modified: 2025-11-11
 #
 # Copyright 2025 Jiawei Wang SJZU. All rights reserved.
 #
@@ -42,6 +42,8 @@ def get_loss(loss_name, **kwargs):
         criterion = MeanAbsRelLoss()
     elif "latent_freq_loss" == loss_name:
         criterion = LatentFrequencyLoss(**kwargs)
+    elif "latent_grad_loss" == loss_name:
+        criterion = LatentGradLoss()
     else:
         raise NotImplementedError
 
@@ -259,3 +261,49 @@ class LatentFrequencyLoss(nn.Module):
             return torch.mean(base_loss)
         else:
             return torch.mean(base_loss)
+        
+class HuberLoss:
+    def __init__(self, delta=0.5):
+        self.delta = delta
+        
+    def __call__(self, depth_pred, depth_gt, valid_mask=None):
+        diff = depth_gt - depth_pred
+        abs_diff = torch.abs(diff)
+        squared_diff = diff ** 2
+        loss = torch.where(abs_diff > self.delta, 0.5 * squared_diff, self.delta * abs_diff - 0.5 * self.delta ** 2)
+        if valid_mask is not None:
+            return torch.mean(loss[valid_mask])
+        else:
+            return torch.mean(loss)
+        
+
+class LatentGradLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, depth_pred_latent, target_latent, mask=None):
+        B, C, H, W = depth_pred_latent.shape
+        
+        grad_x_pred = torch.abs(depth_pred_latent[..., 1:] - depth_pred_latent[..., :-1])
+        grad_x_target = torch.abs(target_latent[..., 1:] - target_latent[..., :-1])
+
+        grad_x_diff = torch.abs(grad_x_pred - grad_x_target)
+
+        grad_y_pred = torch.abs(depth_pred_latent[:, :, 1:, :] - depth_pred_latent[:, :, :-1, :])
+        grad_y_target = torch.abs(target_latent[:, :, 1:, :] - target_latent[:, :, :-1, :])
+
+        grad_y_diff = torch.abs(grad_y_pred - grad_y_target)
+
+        latent_grad_loss = 0.0
+
+        if mask is not None:
+            mask_x = mask[..., :-1]
+
+            mask_y = mask[:, :, :-1, :]
+
+            latent_grad_loss += (grad_x_diff * mask_x).sum() / mask_x.sum()
+            latent_grad_loss += (grad_y_diff * mask_y).sum() / mask_y.sum()
+        else:
+            latent_grad_loss = grad_x_diff.mean() + grad_y_diff.mean()
+
+        return latent_grad_loss

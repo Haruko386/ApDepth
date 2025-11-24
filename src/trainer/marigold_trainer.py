@@ -30,15 +30,12 @@ from typing import List, Union
 
 import numpy as np
 import torch
-from diffusers import DDPMScheduler
 from omegaconf import OmegaConf
 from torch.nn import Conv2d
 from torch.nn.parameter import Parameter
 from torch.optim import Adam
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader
-import torch.nn as nn
-import torch.nn.functional as F
 from tqdm import tqdm
 from PIL import Image
 
@@ -49,7 +46,6 @@ from src.util.logging_util import tb_logger, eval_dic_to_text
 from src.util.loss import get_loss
 from src.util.lr_scheduler import IterExponential
 from src.util.metric import MetricTracker
-from src.util.multi_res_noise import multi_res_noise_like
 from src.util.alignment import align_depth_least_square
 from src.util.seeding import generate_seed_sequence
 
@@ -112,26 +108,11 @@ class MarigoldTrainer:
         # Loss
         self.loss = get_loss(loss_name=self.cfg.loss.name, **self.cfg.loss.kwargs)
         self.latent_freq_loss = get_loss(loss_name=self.cfg.latent_freq_loss.name, ** self.cfg.latent_freq_loss.kwargs)
-
-        # Training noise scheduler
-        self.training_noise_scheduler: DDPMScheduler = DDPMScheduler.from_pretrained(
-            os.path.join(
-                base_ckpt_dir,
-                cfg.trainer.training_noise_scheduler.pretrained_path,
-                "scheduler",
-            )
-        )
-        self.prediction_type = self.training_noise_scheduler.config.prediction_type
-        assert (
-            self.prediction_type == self.model.scheduler.config.prediction_type
-        ), "Different prediction types"
-        self.scheduler_timesteps = (
-            self.training_noise_scheduler.config.num_train_timesteps
-        )
+        self.latent_grad_loss = get_loss(loss_name="latent_grad_loss")
 
         # Eval metrics
         self.metric_funcs = [getattr(metric, _met) for _met in cfg.eval.eval_metrics]
-        self.train_metrics = MetricTracker(*["loss", "latent_freq_loss"])
+        self.train_metrics = MetricTracker(*["loss", "latent_freq_loss", "latent_grad_loss"])
         self.val_metrics = MetricTracker(*[m.__name__ for m in self.metric_funcs])
         # main metric for best checkpoint saving
         self.main_val_metric = cfg.validation.main_val_metric
@@ -151,15 +132,6 @@ class MarigoldTrainer:
         self.backup_period = self.cfg.trainer.backup_period
         self.val_period = self.cfg.trainer.validation_period
         self.vis_period = self.cfg.trainer.visualization_period
-
-        # Multi-resolution noise
-        self.apply_multi_res_noise = self.cfg.multi_res_noise is not None
-        if self.apply_multi_res_noise:
-            self.mr_noise_strength = self.cfg.multi_res_noise.strength
-            self.annealed_mr_noise = self.cfg.multi_res_noise.annealed
-            self.mr_noise_downscale_strategy = (
-                self.cfg.multi_res_noise.downscale_strategy
-            )
 
         # Internal variables
         self.epoch = 1
@@ -268,11 +240,22 @@ class MarigoldTrainer:
                             depth_pred[valid_mask_down].float(),
                             target[valid_mask_down].float(),
                         )
+                        latent_grad_loss = self.latent_grad_loss(
+                            depth_pred.float(),
+                            target.float(),
+                            valid_mask_down.float()
+                        )
                     else:
                         latent_loss = self.loss(depth_pred.float(), target.float())
+                        latent_grad_loss = self.latent_grad_loss(
+                            depth_pred.float(),
+                            target.float(),
+                            mask=None
+                        )
 
-                    loss = latent_loss.mean()
+                    loss = latent_loss.mean() + self.cfg.latent_grad_loss.lamda * latent_grad_loss
                     self.train_metrics.update("loss", loss.item())
+                    self.train_metrics.update("latent_grad_loss", latent_grad_loss.item())
                 else:
                     # FFT latent loss (FFT loss)
                     if self.gt_mask_type is not None:
@@ -291,7 +274,6 @@ class MarigoldTrainer:
                     self.train_metrics.update("latent_freq_loss", freq_loss.item())
                     lambda_freq = self.cfg.latent_freq_loss.get('lambda', 1.0)
                     loss = lambda_freq * freq_loss
-
 
                 loss = loss / self.gradient_accumulation_steps
                 loss.backward()
