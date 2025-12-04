@@ -276,34 +276,3 @@ class HuberLoss:
         else:
             return torch.mean(loss)
         
-
-class LatentGradLoss(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, depth_pred_latent, target_latent, mask=None):
-        B, C, H, W = depth_pred_latent.shape
-        
-        grad_x_pred = torch.abs(depth_pred_latent[..., 1:] - depth_pred_latent[..., :-1])
-        grad_x_target = torch.abs(target_latent[..., 1:] - target_latent[..., :-1])
-
-        grad_x_diff = torch.abs(grad_x_pred - grad_x_target)
-
-        grad_y_pred = torch.abs(depth_pred_latent[:, :, 1:, :] - depth_pred_latent[:, :, :-1, :])
-        grad_y_target = torch.abs(target_latent[:, :, 1:, :] - target_latent[:, :, :-1, :])
-
-        grad_y_diff = torch.abs(grad_y_pred - grad_y_target)
-
-        latent_grad_loss = 0.0
-
-        if mask is not None:
-            mask_x = mask[..., :-1]
-
-            mask_y = mask[:, :, :-1, :]
-
-            latent_grad_loss += (grad_x_diff * mask_x).sum() / mask_x.sum()
-            latent_grad_loss += (grad_y_diff * mask_y).sum() / mask_y.sum()
-        else:
-            latent_grad_loss = grad_x_diff.mean() + grad_y_diff.mean()
-
-        return latent_grad_loss
