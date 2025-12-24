@@ -110,11 +110,11 @@ class MarigoldTrainer:
         # Loss
         self.loss = get_loss(loss_name=self.cfg.loss.name, **self.cfg.loss.kwargs)
         self.latent_freq_loss = get_loss(loss_name=self.cfg.latent_freq_loss.name, ** self.cfg.latent_freq_loss.kwargs)
-        self.latent_grad_loss = get_loss(loss_name="latent_grad_loss")
+        self.msg_loss = get_loss(loss_name=self.cfg.multi_scale_grad_loss.name)
 
         # Eval metrics
         self.metric_funcs = [getattr(metric, _met) for _met in cfg.eval.eval_metrics]
-        self.train_metrics = MetricTracker(*["loss", "latent_freq_loss", "latent_grad_loss"])
+        self.train_metrics = MetricTracker(*["loss", "msg_loss", "latent_freq_loss"])
         self.val_metrics = MetricTracker(*[m.__name__ for m in self.metric_funcs])
         # main metric for best checkpoint saving
         self.main_val_metric = cfg.validation.main_val_metric
@@ -242,22 +242,18 @@ class MarigoldTrainer:
                             depth_pred[valid_mask_down].float(),
                             target[valid_mask_down].float(),
                         )
-                        latent_grad_loss = self.latent_grad_loss(
+                        msg_loss = self.msg_loss(
                             depth_pred.float(),
                             target.float(),
-                            valid_mask_down.float()
+                            valid_mask_down
                         )
                     else:
                         latent_loss = self.loss(depth_pred.float(), target.float())
-                        latent_grad_loss = self.latent_grad_loss(
-                            depth_pred.float(),
-                            target.float(),
-                            mask=None
-                        )
+                        msg_loss = self.msg_loss(depth_pred.float(), target.float())
 
-                    loss = latent_loss.mean() + self.cfg.latent_grad_loss.lamda * latent_grad_loss
+                    loss = latent_loss.mean() + msg_loss.mean()
                     self.train_metrics.update("loss", loss.item())
-                    self.train_metrics.update("latent_grad_loss", latent_grad_loss.item())
+                    self.train_metrics.update("msg_loss", loss.item())
                 else:
                     # FFT latent loss (FFT loss)
                     if self.gt_mask_type is not None:
