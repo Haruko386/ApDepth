@@ -1,6 +1,9 @@
-# Last modified: 2024-04-30
+# Last modified: 2025-12-26
 #
-# Copyright 2023 Bingxin Ke, ETH Zurich. All rights reserved.
+# Copyright 2025 Jiawei Wang, SJZU. All rights reserved.
+# 
+# This file has been modified from the original version.
+# Original copyright (c) 2023 Bingxin Ke, ETH Zurich. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -115,6 +118,12 @@ class BaseDepthDataset(Dataset):
 
     def __getitem__(self, index):
         rasters, other = self._get_data_item(index)
+
+        if DatasetMode.TRAIN == self.mode and "valid_mask_raw" in rasters:
+            if rasters["valid_mask_raw"].sum() < 10:
+                new_index = random.randint(0, len(self) - 1)
+                return self.__getitem__(new_index)
+            
         if DatasetMode.TRAIN == self.mode:
             rasters = self._training_preprocess(rasters)
         # merge
