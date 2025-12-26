@@ -36,9 +36,9 @@ trainer:
     pretrained_path: stable-diffusion-2
   init_seed: 2024  # use null to train w/o seeding
   save_period: 250
-  backup_period: 2000
-  validation_period: 4000
-  visualization_period: 4000
+  backup_period: 4000
+  validation_period: 2000
+  visualization_period: 2000
 
 gt_depth_type: depth_raw_norm
 gt_mask_type: valid_mask_raw
@@ -93,13 +93,3 @@ latent_freq_loss:
     loss_type: 'l1'
     high_pass_weight: 1.0
   lambda: 0.5
-
-multi_scale_grad_loss:
-  name: msg_loss
-  lambda: 1
-
-sky_loss:
-  name: sky_min_depth_loss
-  kwargs:
-    min_depth: -0.3
-  lambda: 0.05
