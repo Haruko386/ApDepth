@@ -1,0 +1,4 @@
+name: diode
+disp_name: diode_train_outdoor
+dir: diode/train
+filenames: data_split/diode/diode_train_outdoor_filename_list.txt

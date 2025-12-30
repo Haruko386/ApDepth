@@ -37,8 +37,8 @@ trainer:
   init_seed: 2024  # use null to train w/o seeding
   save_period: 250
   backup_period: 4000
-  validation_period: 2000
-  visualization_period: 2000
+  validation_period: 4000
+  visualization_period: 4000
 
 gt_depth_type: depth_raw_norm
 gt_mask_type: valid_mask_raw

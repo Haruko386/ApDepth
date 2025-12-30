@@ -1,7 +1,7 @@
 dataset:
   train:
     name: mixed
-    prob_ls: [0.55, 0.45]
+    prob_ls: [0.70, 0.15, 0.15]
     dataset_list:
     - name: hypersim
       disp_name: hypersim_train
@@ -10,17 +10,9 @@ dataset:
       resize_to_hw:
       - 480
       - 640
-    - name: diode
-      disp_name: diode_train_all
-      dir: diode/train
-      filenames: data_split/diode/diode_train_all_filename_list.txt 
-      resize_to_hw:
-      - 480
-      - 640
-    
-    # - name: vkitti
-    #   disp_name: vkitti_train
-    #   dir: vkitti/vkitti_rgb
-    #   filenames: data_split/vkitti/vkitti_train.txt
-    #   kitti_bm_crop: true
-    #   valid_mask_crop: null
+    - name: vkitti
+      disp_name: vkitti_train
+      dir: vkitti/vkitti_rgb
+      filenames: data_split/vkitti/vkitti_train.txt
+      kitti_bm_crop: true
+      valid_mask_crop: null
