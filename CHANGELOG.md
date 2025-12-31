@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ----------
 
+## Goodbye 2025, 2025 is near 🎉
+
 ## [ApDepth-v1-2] - 2025-11-25
 > We present a new Loss_Function for our two stage training strats. We use `MSE_Loss` for stage one to
 > learn the whole information and stage two uses our propoesd `Latent_Frequence_Loss` to refine edge detail
