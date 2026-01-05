@@ -150,7 +150,7 @@ class MarigoldPipeline(DiffusionPipeline):
         # init DA2
         if da2_config is not None:
             self.da2 = DepthAnythingV2(**da2_config)
-            self.da2.load_state_dict(torch.load(f'/root/Marigold/DA2/checkpoints/depth_anything_v2_{da2_config["encoder"]}.pth', map_location='cpu'))
+            self.da2.load_state_dict(torch.load(f'DA2/checkpoints/depth_anything_v2_{da2_config["encoder"]}.pth', map_location='cpu'))
             self.da2.to(device="cuda").eval()
         else:
             self.da2 = None

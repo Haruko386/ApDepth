@@ -38,7 +38,6 @@ from src.dataset import (
     get_dataset,
     get_pred_name,
 )
-# from marigold.modules.unet_2d_condition import UNet2DConditionModel
 
 if "__main__" == __name__:
     logging.basicConfig(level=logging.INFO)
@@ -47,7 +46,6 @@ if "__main__" == __name__:
     parser = argparse.ArgumentParser(
         description="Run single-image depth estimation using Marigold."
     )
-    # 这个模型可能在.cache下的那个margold里面，反正替换那个就行了
     parser.add_argument(
         "--checkpoint",
         type=str,

@@ -5,53 +5,13 @@ dataset:
     dir: nyuv2/nyu_labeled_extracted.tar
     filenames: data_split/nyu/labeled/filename_list_test.txt
     eigen_valid_mask: true
-    
-  # - name: kitti
-  #   disp_name: kitti_val800_from_eigen_train
-  #   dir: /root/Datasets/kitti/kitti_sampled_val_800.tar
-  #   filenames: data_split/kitti/eigen_test_files_with_gt.txt
-  #   kitti_bm_crop: true
-  #   valid_mask_crop: eigen
-  # 测试集用nyu，真需要吗？我持怀疑态度，为什么不直接run完跑eval呢？
-
-  # - name: vkitti
-  #   disp_name: vkitti_val
-  #   dir: vkitti_depth
-  #   filenames: data_split/vkitti/vkitti_val.txt
-  #   kitti_bm_crop: true
-  #   valid_mask_crop: eigen
-
-  # - name: hypersim
-  #   disp_name: hypersim_val
-  #   dir: hypersim/hypersim_processed_val.tar
-  #   filenames: data_split/hypersim/filename_list_val_filtered.txt
-  #   resize_to_hw:
-  #   - 480
-  #   - 640
-
-
-
-  
-
-  # Smaller subsets for faster validation during training
-  # The first dataset is used to calculate main eval metric.
-  # - name: hypersim
-  #   disp_name: hypersim_val_small_80
-  #   dir: hypersim/hypersim_processed_val.tar
-  #   filenames: data_split/hypersim/filename_list_val_filtered_small_80.txt
-  #   resize_to_hw:
-  #   - 480
-  #   - 640
-
-  # - name: nyu_v2
-  #   disp_name: nyu_train_small_100
-  #   dir: nyuv2/nyu_labeled_extracted.tar
-  #   filenames: data_split/nyu/labeled/filename_list_train_small_100.txt
-  #   eigen_valid_mask: true
-
-  # - name: kitti
-  #   disp_name: kitti_val_from_train_sub_100
-  #   dir: kitti/kitti_sampled_val_800.tar
-  #   filenames: data_split/kitti/eigen_val_from_train_sub_100.txt
-  #   kitti_bm_crop: true
-  #   valid_mask_crop: eigen
+  - name: kitti
+    disp_name: kitti_eigen_test_full
+    dir: kitti/kitti_eigen_split_test.tar
+    filenames: data_split/kitti/eigen_test_files_with_gt.txt
+    kitti_bm_crop: true
+    valid_mask_crop: eigen
+  # - name: diode
+  #   disp_name: diode_val_all
+  #   dir: diode/diode_val.tar
+  #   filenames: data_split/diode/diode_val_all_filename_list.txt 

@@ -21,5 +21,4 @@ bash script/eval/52_eval_diode.sh
 bash script/eval/31_infer_eth3d.sh
 bash script/eval/32_eval_eth3d.sh
 
-# Since the inference process consumes relatively little GPU memory, 
-# a single 4090 with 24GB of VRAM is sufficient to perform parallel inference on five datasets simultaneously across multiple terminals.
+# We test our model on a single Nvidia RTX 5080 GPU with 16GB Memory size

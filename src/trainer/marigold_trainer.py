@@ -118,7 +118,6 @@ class MarigoldTrainer:
         # Loss
         self.loss = get_loss(loss_name=self.cfg.loss.name, **self.cfg.loss.kwargs)
         self.latent_freq_loss = get_loss(loss_name=self.cfg.latent_freq_loss.name, ** self.cfg.latent_freq_loss.kwargs)
-
         # Eval metrics
         self.metric_funcs = [getattr(metric, _met) for _met in cfg.eval.eval_metrics]
         self.train_metrics = MetricTracker(*["loss", "latent_freq_loss"])
@@ -196,18 +195,7 @@ class MarigoldTrainer:
                 # Get data
                 rgb = batch["rgb_norm"].to(device)
                 depth_gt_for_latent = batch[self.gt_depth_type].to(device)
-                
-                with torch.no_grad():
-                    depth_da2 = self.model.da2.infer_batch(rgb)
-                    sky_mask_full = self.compute_sky_mask(depth_da2)
-
-                    # downsample to latent resolution (×8)
-                    sky_mask_down = torch.nn.functional.max_pool2d(
-                        sky_mask_full.float(), kernel_size=8, stride=8
-                    ).bool()
-
-                    # expand to latent channels
-                    sky_mask_down = sky_mask_down.repeat((1, 4, 1, 1))
+                depth_da2 = self.model.da2.infer_batch(rgb).to(device)
 
                 if self.gt_mask_type is not None:
                     valid_mask_for_latent = batch[self.gt_mask_type].to(device)
@@ -263,12 +251,16 @@ class MarigoldTrainer:
                     weight_mask = valid_mask_down.float()
 
                 if self.effective_iter <= 24000: 
-                    diff = (depth_pred - target) ** 2
-                    weighted_diff = diff * weight_mask
+                    # Masked latent loss (MSE loss)
+                    if self.gt_mask_type is not None:
+                        latent_loss = self.loss(
+                            depth_pred[valid_mask_down].float(),
+                            target[valid_mask_down].float(),
+                        )
+                    else:
+                        latent_loss = self.loss(depth_pred.float(), target.float())
 
-                    loss = weighted_diff.sum() / (weight_mask.sum() + 1e-6)
-                    self.train_metrics.update("loss", loss.item())
-
+                    loss = latent_loss.mean()
                     self.train_metrics.update("loss", loss.item())
                 else:
                     # FFT latent loss (FFT loss)

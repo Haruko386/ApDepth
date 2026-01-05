@@ -118,7 +118,6 @@ if "__main__" == __name__:
     # -------------------- Device --------------------
     cuda_avail = torch.cuda.is_available() and not no_cuda
     device = torch.device("cuda" if cuda_avail else "cpu")
-    device = "cuda"
     logging.info(f"Device: {device}")
 
     # -------------------- Data --------------------
@@ -207,6 +206,7 @@ if "__main__" == __name__:
             )
             gt_sqrt_disp = np.sqrt(gt_disparity)
             gt_non_neg_mask = (gt_sqrt_disp > 0) & gt_non_neg_mask
+            
             # LS alignment in sqrt space
             pred_non_neg_mask = depth_pred > 0
             valid_nonnegative_mask = valid_mask & gt_non_neg_mask & pred_non_neg_mask
