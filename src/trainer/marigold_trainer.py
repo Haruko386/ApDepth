@@ -80,14 +80,6 @@ class MarigoldTrainer:
         self.vis_loaders: List[DataLoader] = vis_dataloaders
         self.accumulation_steps: int = accumulation_steps
 
-        #  Sky-aware loss config
-        self.enable_sky_weight = self.cfg.get("enable_sky_weight", True)
-        self.sky_weight = self.cfg.get("sky_weight", 0.2)
-
-        # DA2 sky threshold（用于 sky mask）
-        self.sky_depth_percentile = self.cfg.get("sky_depth_percentile", 90)
-        self.sky_grad_threshold = self.cfg.get("sky_grad_threshold", 0.01)
-
         # Adapt input layers
         if 8 != self.model.unet.config["in_channels"]:
             self._replace_unet_conv_in()
@@ -118,6 +110,7 @@ class MarigoldTrainer:
         # Loss
         self.loss = get_loss(loss_name=self.cfg.loss.name, **self.cfg.loss.kwargs)
         self.latent_freq_loss = get_loss(loss_name=self.cfg.latent_freq_loss.name, ** self.cfg.latent_freq_loss.kwargs)
+
         # Eval metrics
         self.metric_funcs = [getattr(metric, _met) for _met in cfg.eval.eval_metrics]
         self.train_metrics = MetricTracker(*["loss", "latent_freq_loss"])
@@ -195,7 +188,9 @@ class MarigoldTrainer:
                 # Get data
                 rgb = batch["rgb_norm"].to(device)
                 depth_gt_for_latent = batch[self.gt_depth_type].to(device)
-                depth_da2 = self.model.da2.infer_batch(rgb).to(device)
+                
+                with torch.no_grad():
+                    depth_da2 = self.model.da2.infer_batch(rgb)
 
                 if self.gt_mask_type is not None:
                     valid_mask_for_latent = batch[self.gt_mask_type].to(device)
@@ -238,17 +233,6 @@ class MarigoldTrainer:
                 target = gt_depth_latent
 
                 loss = 0.0
-
-                if self.enable_sky_weight:
-                    weight_mask = torch.ones_like(target)
-
-                    # valid_mask_down 已经存在
-                    weight_mask[~valid_mask_down] = 0.0
-
-                    # sky region down-weight
-                    weight_mask[sky_mask_down] *= self.sky_weight
-                else:
-                    weight_mask = valid_mask_down.float()
 
                 if self.effective_iter <= 24000: 
                     # Masked latent loss (MSE loss)
@@ -632,42 +616,3 @@ class MarigoldTrainer:
 
     def _get_backup_ckpt_name(self):
         return f"iter_{self.effective_iter:06d}"
-    
-    @torch.no_grad()
-    def compute_sky_mask(self, depth_da2):
-        """
-        depth_da2: [B, 1, H, W] or [B, 3, H, W]
-        return: sky_mask [B, 1, H, W] (bool)
-        """
-        if depth_da2.shape[1] > 1:
-            depth = depth_da2[:, 0:1]
-        else:
-            depth = depth_da2
-
-        B, _, H, W = depth.shape
-
-        # ---------- 1. depth percentile (far = sky candidate) ----------
-        depth_flat = depth.view(B, -1)
-        thresh = torch.quantile(
-            depth_flat,
-            self.sky_depth_percentile / 100.0,
-            dim=1,
-            keepdim=True
-        )
-        thresh = thresh.view(B, 1, 1, 1)
-
-        far_mask = depth > thresh
-
-        # ---------- 2. depth gradient (sky is smooth) ----------
-        dx = torch.abs(depth[:, :, :, 1:] - depth[:, :, :, :-1])
-        dy = torch.abs(depth[:, :, 1:, :] - depth[:, :, :-1, :])
-
-        dx = torch.nn.functional.pad(dx, (0, 1, 0, 0))
-        dy = torch.nn.functional.pad(dy, (0, 0, 0, 1))
-
-        grad = dx + dy
-        smooth_mask = grad < self.sky_grad_threshold
-
-        # ---------- 3. final sky mask ----------
-        sky_mask = far_mask & smooth_mask
-        return sky_mask
