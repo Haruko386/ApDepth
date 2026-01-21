@@ -184,7 +184,7 @@ export BASE_DATA_DIR=YOUR_DATA_DIR  # directory of training data
 export BASE_CKPT_DIR=YOUR_CHECKPOINT_DIR  # directory of pretrained checkpoint
 ```
 
-Download Stable Diffusion v2 [checkpoint](https://huggingface.co/stabilityai/stable-diffusion-2) into `${BASE_CKPT_DIR}`
+Download Stable Diffusion v2 [checkpoint](https://huggingface.co/sd2-community/stable-diffusion-2/tree/main) into `${BASE_CKPT_DIR}`
 
 Download the checkpoint of [Depth-Anything-V2](https://github.com/DepthAnything/Depth-Anything-V2) into `DA2/checkpoints/`
 
