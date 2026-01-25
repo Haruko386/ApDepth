@@ -1,6 +1,6 @@
-# Last modified: 2025-11-24
+# Last modified: 2026-01-19
 #
-# Copyright 2025 Jiawei Wang, SJZU. All rights reserved.
+# Copyright 2026 Jiawei Wang, SJZU. All rights reserved.
 # 
 # This file has been modified from the original version.
 # Original copyright (c) 2023 Bingxin Ke, ETH Zurich. All rights reserved.
@@ -72,6 +72,7 @@ class MarigoldTrainer:
         self.seed: Union[int, None] = (
             self.cfg.trainer.init_seed
         )  # used to generate seed sequence, set to `None` to train w/o seeding
+        
         self.out_dir_ckpt = out_dir_ckpt
         self.out_dir_eval = out_dir_eval
         self.out_dir_vis = out_dir_vis
@@ -110,11 +111,13 @@ class MarigoldTrainer:
         # Loss
         self.loss = get_loss(loss_name=self.cfg.loss.name, **self.cfg.loss.kwargs)
         self.latent_freq_loss = get_loss(loss_name=self.cfg.latent_freq_loss.name, ** self.cfg.latent_freq_loss.kwargs)
-
+        self.ssim_loss = get_loss(loss_name='ssim',)
+        
         # Eval metrics
         self.metric_funcs = [getattr(metric, _met) for _met in cfg.eval.eval_metrics]
         self.train_metrics = MetricTracker(*["loss", "latent_freq_loss"])
         self.val_metrics = MetricTracker(*[m.__name__ for m in self.metric_funcs])
+
         # main metric for best checkpoint saving
         self.main_val_metric = cfg.validation.main_val_metric
         self.main_val_metric_goal = cfg.validation.main_val_metric_goal
@@ -188,9 +191,7 @@ class MarigoldTrainer:
                 # Get data
                 rgb = batch["rgb_norm"].to(device)
                 depth_gt_for_latent = batch[self.gt_depth_type].to(device)
-                
-                with torch.no_grad():
-                    depth_da2 = self.model.da2.infer_batch(rgb)
+                depth_da2 = self.model.da2.infer_batch(rgb).to(device)
 
                 if self.gt_mask_type is not None:
                     valid_mask_for_latent = batch[self.gt_mask_type].to(device)
@@ -221,7 +222,7 @@ class MarigoldTrainer:
 
                 unet_input = torch.cat(
                     [depth_da2_latent, rgb_latent], dim=1
-                ) 
+                ).float()  # [B, 8, h, w]
 
                 # Predict the output
                 depth_pred = self.model.unet(
@@ -229,35 +230,44 @@ class MarigoldTrainer:
                 ).sample  # [B, 4, h, w]
                 if torch.isnan(depth_pred).any():
                     logging.warning("model_pred contains NaN.")
+                
+                # Decode depth
+                depth = self.model.decode_depth(depth_pred)
+                depth_gt_for_loss = depth_gt_for_latent
 
-                target = gt_depth_latent
+                torch.cuda.empty_cache()
 
                 loss = 0.0
 
-                if self.effective_iter <= 24000: 
+                if self.effective_iter <= 20000: 
                     # Masked latent loss (MSE loss)
                     if self.gt_mask_type is not None:
                         latent_loss = self.loss(
-                            depth_pred[valid_mask_down].float(),
-                            target[valid_mask_down].float(),
+                            depth[valid_mask_for_latent].float(),
+                            depth_gt_for_loss[valid_mask_for_latent].float(),
                         )
                     else:
-                        latent_loss = self.loss(depth_pred.float(), target.float())
-
-                    loss = latent_loss.mean()
+                        latent_loss = self.loss(depth.float(), depth_gt_for_loss.float())
+                    ssim_loss = self.ssim_loss(
+                        depth.float(),
+                        depth_gt_for_loss.float(),
+                    )
+                    # update loss
+                    lambda_ssim = self.cfg.ssim_loss.get('lambda', 1.0)
+                    loss = latent_loss.mean() + lambda_ssim * ssim_loss.mean()
                     self.train_metrics.update("loss", loss.item())
                 else:
                     # FFT latent loss (FFT loss)
                     if self.gt_mask_type is not None:
                         freq_loss = self.latent_freq_loss(
                             depth_pred.float(),
-                            target.float(),
+                            gt_depth_latent.float(),
                             valid_mask_down
                         )
                     else:
                         freq_loss = self.latent_freq_loss(
                             depth_pred.float(),
-                            target.float(),
+                            gt_depth_latent.float(),
                             mask=None
                         )
 
@@ -268,6 +278,9 @@ class MarigoldTrainer:
                 loss = loss / self.gradient_accumulation_steps
                 loss.backward()
                 accumulated_step += 1
+
+                del depth, depth_pred, unet_input, text_embed, depth_da2_latent, rgb_latent
+                torch.cuda.empty_cache()
 
                 self.n_batch_in_epoch += 1
                 # Practical batch end
@@ -283,7 +296,7 @@ class MarigoldTrainer:
 
                     # Log to tensorboard
                     accumulated_metrics = self.train_metrics.result()
-                    loss_to_log = accumulated_metrics.get("latent_freq_loss", 0.0) if self.effective_iter > 24000 else accumulated_metrics.get("loss", 0.0) # Only ACMer would do this
+                    loss_to_log = accumulated_metrics.get("latent_freq_loss", 0.0) if self.effective_iter > 20000 else accumulated_metrics.get("loss", 0.0) # Only ACMer would do this
 
                     tb_logger.log_dic(
                         {
