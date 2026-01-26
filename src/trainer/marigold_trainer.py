@@ -111,7 +111,7 @@ class MarigoldTrainer:
         # Loss
         self.loss = get_loss(loss_name=self.cfg.loss.name, **self.cfg.loss.kwargs)
         self.latent_freq_loss = get_loss(loss_name=self.cfg.latent_freq_loss.name, ** self.cfg.latent_freq_loss.kwargs)
-        self.grad_loss = get_loss(loss_name=self.cfg.grad_loss.name, ** self.cfg.grad_loss.kwargs)
+        self.ssim_loss = get_loss(loss_name='ssim',)
         
         # Eval metrics
         self.metric_funcs = [getattr(metric, _met) for _met in cfg.eval.eval_metrics]
@@ -259,34 +259,26 @@ class MarigoldTrainer:
                         )
                     else:
                         latent_loss = self.loss(depth.float(), depth_gt_for_loss.float())
-                    
-                    # grad loss
-                    depth_gt_for_loss[~valid_mask_for_latent] = 0
-                    grad_gt = self.grad(depth_gt_for_loss)
-
-                    depth[~valid_mask_for_latent] = 0
-                    grad_pred = self.grad(depth)
-
-                    grad_loss = self.grad_loss(grad_gt, grad_pred)
-
+                    ssim_loss = self.ssim_loss(
+                        depth.float(),
+                        depth_gt_for_loss.float(),
+                    )
                     # update loss
-                    loss = latent_loss.mean()
-                    loss += self.cfg.grad_loss.lamda * grad_loss
-
-                    self.train_metrics.update(f"grad_loss", grad_loss.item())
+                    lambda_ssim = self.cfg.ssim_loss.get('lambda', 1.0)
+                    loss = latent_loss.mean() + lambda_ssim * ssim_loss.mean()
                     self.train_metrics.update("loss", loss.item())
                 else:
                     # FFT latent loss (FFT loss)
                     if self.gt_mask_type is not None:
                         freq_loss = self.latent_freq_loss(
-                            depth.float(),
-                            depth_gt_for_latent.float(),
+                            depth_pred.float(),
+                            gt_depth_latent.float(),
                             valid_mask_down
                         )
                     else:
                         freq_loss = self.latent_freq_loss(
-                            depth.float(),
-                            depth_gt_for_latent.float(),
+                            depth_pred.float(),
+                            gt_depth_latent.float(),
                             mask=None
                         )
 
