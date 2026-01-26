@@ -1,6 +1,6 @@
-# Last modified: 2025-11-11
+# Last modified: 2026-01-16
 #
-# Copyright 2025 Jiawei Wang SJZU. All rights reserved.
+# Copyright 2026 Jiawei Wang SJZU. All rights reserved.
 #
 # This file has been modified from the original version.
 # Original copyright (c) 2023 Bingxin Ke, ETH Zurich. All rights reserved.
@@ -42,15 +42,53 @@ def get_loss(loss_name, **kwargs):
         criterion = MeanAbsRelLoss()
     elif "latent_freq_loss" == loss_name:
         criterion = LatentFrequencyLoss(**kwargs)
-    elif "latent_grad_loss" == loss_name:
-        criterion = LatentGradLoss()
-    elif "msg_loss" == loss_name:
-        criterion = multi_scale_grad_loss
+    elif "normal_loss" == loss_name:
+        criterion = NormalLoss(**kwargs)
+    elif "huber_loss" == loss_name:
+        criterion = HuberLoss(**kwargs)
     else:
         raise NotImplementedError
 
     return criterion
 
+def compute_normals_from_depth(depth_map, fx, fy, cx, cy):
+
+    batch_size, _, height, width = depth_map.shape
+    u = torch.arange(width, device=depth_map.device).float().view(1, 1, 1, width)
+    v = torch.arange(height, device=depth_map.device).float().view(1, 1, height, 1)
+
+    u = u.expand(batch_size, -1, height, width)
+    v = v.expand(batch_size, -1, height, width)
+
+    x = (u - cx) * depth_map / fx
+    y = (v - cy) * depth_map / fy
+    z = depth_map
+
+    point_cloud = torch.cat([x, y, z], dim=1)
+
+    d_points_dx = point_cloud[:, :, :, 2:] - point_cloud[:, :, :, :width-2]
+    d_points_dy = point_cloud[:, :, 2:, :] - point_cloud[:, :, :height-2, :]
+
+    d_points_dx = torch.nn.functional.pad(d_points_dx, (1, 1, 0, 0), mode='replicate')
+    d_points_dy = torch.nn.functional.pad(d_points_dy, (0, 0, 1, 1), mode='replicate')
+    normals = torch.cross(d_points_dx, d_points_dy, dim=1)
+    normals = torch.nn.functional.normalize(normals, p=2, dim=1)
+    return normals
+
+class NormalLoss(nn.Module):
+  def __init__(self):
+      super(NormalLoss, self).__init__()
+
+  def forward(self, pred_depth, gt_depth, fx, fy, cx, cy, mask=None):
+    pred_normals = compute_normals_from_depth(pred_depth, fx, fy, cx, cy)
+    gt_normals = compute_normals_from_depth(gt_depth, fx, fy, cx, cy)
+    cosine_sim = torch.sum(pred_normals * gt_normals, dim=1, keepdim=True)
+    loss = 1 - cosine_sim
+    if mask is not None:
+        loss = loss[mask].mean()
+    else:
+        loss = loss.mean()
+    return loss
 
 class L1LossWithMask:
     def __init__(self, batch_reduction=False):
@@ -309,26 +347,3 @@ class LatentGradLoss(nn.Module):
             latent_grad_loss = grad_x_diff.mean() + grad_y_diff.mean()
 
         return latent_grad_loss
-    
-def multi_scale_grad_loss(prediction, target, mask):
-    total = 0
-    for scale in range(4):
-        step = pow(2, scale)
-        total += grad_loss(prediction[:, ::step, ::step], 
-            target[:, ::step, ::step],
-            mask[:, ::step, ::step])
-    return total
-
-def grad_loss(prediction, target, mask):
-    M = torch.sum(mask, (1, 2))
-    diff = prediction - target
-    diff = torch.mul(mask, diff)
-    grad_x = torch.abs(diff[:, :, 1:] - diff[:, :, :-1])
-    mask_x = torch.mul(mask[:, :, 1:], mask[:, :, :-1])
-    grad_x = torch.mul(mask_x, grad_x)
-    grad_y = torch.abs(diff[:, 1:, :] - diff[:, :-1, :])
-    mask_y = torch.mul(mask[:, 1:, :], mask[:, :-1, :])
-    grad_y = torch.mul(mask_y, grad_y)
-    image_loss = torch.sum(grad_x, (1, 2)) + torch.sum(grad_y, (1, 2))
-
-    return torch.sum(image_loss) / torch.sum(M)

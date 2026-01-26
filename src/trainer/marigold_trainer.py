@@ -115,7 +115,7 @@ class MarigoldTrainer:
         
         # Eval metrics
         self.metric_funcs = [getattr(metric, _met) for _met in cfg.eval.eval_metrics]
-        self.train_metrics = MetricTracker(*["loss", "latent_freq_loss"])
+        self.train_metrics = MetricTracker(*["loss", "grad_loss", "latent_freq_loss"])
         self.val_metrics = MetricTracker(*[m.__name__ for m in self.metric_funcs])
 
         # main metric for best checkpoint saving
@@ -164,6 +164,17 @@ class MarigoldTrainer:
         self.model.unet.config["in_channels"] = 8
         logging.info("Unet config is updated")
         return
+
+    def grad(self, x):
+        # x.shape : n, c, h, w
+        diff_x = x[..., 1:, 1:] - x[..., 1:, :-1]
+        diff_y = x[..., 1:, 1:] - x[..., :-1, 1:]
+
+        diff_45 = x[..., :-1, 1:] - x[..., 1:, :-1]
+        diff_135 = x[..., 1:, 1:] - x[..., :-1, :-1]
+
+        result = torch.cat([diff_x, diff_y, diff_45, diff_135], dim=1)
+        return result
     
     def train(self, t_end=None):
         logging.info("Start training")
@@ -211,9 +222,9 @@ class MarigoldTrainer:
                     # Encode DA2 depth
                     depth_da2_latent = self.model.encode_rgb(depth_da2) # [B, 4, h, w]
                     # Encode GT depth
-                    gt_depth_latent = self.encode_depth(
-                        depth_gt_for_latent
-                    )  # [B, 4, h, w]
+                    # gt_depth_latent = self.encode_depth(
+                    #     depth_gt_for_latent
+                    # )  # [B, 4, h, w]
 
                 # Text embedding
                 text_embed = self.empty_text_embed.to(device).repeat(
