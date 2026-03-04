@@ -7,8 +7,9 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 [![Hugging Face Model](https://img.shields.io/badge/🤗%20Hugging%20Face-Model-green)](https://huggingface.co/developy/ApDepth)
 [![Hugging Face Demo](https://img.shields.io/badge/🤗%20Hugging%20Face-Demo-purple)](https://huggingface.co/spaces/developy/ApDepth)
 
-[Haruko386](https://haruko386.github.io/),
-[Shuai Yuan](https://syjz.teacher.360eol.com/teacherBasic/preview?teacherId=23776)
+[**Haruko386**](https://haruko386.github.io/),
+[Shuai Yuan](https://syjz.teacher.360eol.com/teacherBasic/preview?teacherId=23776),
+[Mingbo Lei](https://github.com/Ltohka)
 
 ![cover](doc/cover.png)
 
@@ -34,11 +35,11 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 ## 🛠️ Setup
 The Model was trained on:
 
-- Ubuntu 22.04 LTS, Python 3.12.9,  CUDA 11.8, GeForce RTX 4090 (pip)
+- Ubuntu 22.04 LTS, Python 3.12.9,  CUDA 11.8, Nvidia RTX 6000 Ada Generation
 
 The inference code was tested on:
 
-- Ubuntu 22.04 LTS, Python 3.12.9,  CUDA 11.8, GeForce RTX 4090 & GeForce RTX 5080 (pip)
+- Ubuntu 22.04 LTS, Python 3.12.9,  CUDA 11.8, Nvidia GeForce RTX 4090
 
 ### 🪧 A Note for Windows users
 
@@ -62,12 +63,18 @@ cd ApDepth
  **Using Conda:** 
     Alternatively, create a Python native virtual environment and install dependencies into it:
 
-    conda create -n apdepth python==3.12.9
-    conda activate apdepth
-    pip install -r requirements.txt
+```bash
+conda create -n apdepth python==3.12.9
+conda activate apdepth
+pip install -r requirements.txt
+```
 
-Keep the environment activated before running the inference script. 
-Activate the environment again after restarting the terminal session.
+> [!NOTE]
+>
+> Keep the environment activated before running the inference script. 
+> Activate the environment again after restarting the terminal session.
+
+
 
 ## 🏃 Testing on your images
 
@@ -184,7 +191,7 @@ export BASE_DATA_DIR=YOUR_DATA_DIR  # directory of training data
 export BASE_CKPT_DIR=YOUR_CHECKPOINT_DIR  # directory of pretrained checkpoint
 ```
 
-Download Stable Diffusion v2 [checkpoint](https://huggingface.co/sd2-community/stable-diffusion-2/tree/main) into `${BASE_CKPT_DIR}`
+Download Stable Diffusion v2 [checkpoint](https://huggingface.co/sd2-community/stable-diffusion-2) into `${BASE_CKPT_DIR}`
 
 Download the checkpoint of [Depth-Anything-V2](https://github.com/DepthAnything/Depth-Anything-V2) into `DA2/checkpoints/`
 
@@ -210,7 +217,11 @@ python train.py --resume_run output/train_marigold/checkpoint/latest --no_wandb
 
 Only the U-Net is updated and saved during training. To use the inference pipeline with your training result, replace `unet` folder in `train_apdepth` checkpoints with that in the `checkpoint` output folder. Then refer to [this section](#evaluation) for evaluation.
 
-**Note**: Although random seeds have been set, the training result might be slightly different on different hardwares. It's recommended to train without interruption.
+> [!IMPORTANT]
+>
+> Although random seeds have been set, the training result might be slightly different on different hardwares. It's recommended to train without interruption.
+
+
 
 ## ✏️ Contributing
 
