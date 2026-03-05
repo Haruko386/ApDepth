@@ -1,4 +1,4 @@
-# Last modified: 2026-01-19
+# Last modified: 2026-03-04
 #
 # Copyright 2026 Jiawei Wang, SJZU. All rights reserved.
 # 
@@ -110,12 +110,12 @@ class MarigoldTrainer:
 
         # Loss
         self.loss = get_loss(loss_name=self.cfg.loss.name, **self.cfg.loss.kwargs)
+        self.l1_loss = get_loss(loss_name=self.cfg.l1_loss.name, **self.cfg.l1_loss.kwargs)
         self.latent_freq_loss = get_loss(loss_name=self.cfg.latent_freq_loss.name, ** self.cfg.latent_freq_loss.kwargs)
-        self.ssim_loss = get_loss(loss_name='ssim',)
         
         # Eval metrics
         self.metric_funcs = [getattr(metric, _met) for _met in cfg.eval.eval_metrics]
-        self.train_metrics = MetricTracker(*["loss", "grad_loss", "latent_freq_loss"])
+        self.train_metrics = MetricTracker(*["loss", "latent_freq_loss"])
         self.val_metrics = MetricTracker(*[m.__name__ for m in self.metric_funcs])
 
         # main metric for best checkpoint saving
@@ -164,17 +164,6 @@ class MarigoldTrainer:
         self.model.unet.config["in_channels"] = 8
         logging.info("Unet config is updated")
         return
-
-    def grad(self, x):
-        # x.shape : n, c, h, w
-        diff_x = x[..., 1:, 1:] - x[..., 1:, :-1]
-        diff_y = x[..., 1:, 1:] - x[..., :-1, 1:]
-
-        diff_45 = x[..., :-1, 1:] - x[..., 1:, :-1]
-        diff_135 = x[..., 1:, 1:] - x[..., :-1, :-1]
-
-        result = torch.cat([diff_x, diff_y, diff_45, diff_135], dim=1)
-        return result
     
     def train(self, t_end=None):
         logging.info("Start training")
@@ -222,9 +211,9 @@ class MarigoldTrainer:
                     # Encode DA2 depth
                     depth_da2_latent = self.model.encode_rgb(depth_da2) # [B, 4, h, w]
                     # Encode GT depth
-                    # gt_depth_latent = self.encode_depth(
-                    #     depth_gt_for_latent
-                    # )  # [B, 4, h, w]
+                    gt_depth_latent = self.encode_depth(
+                        depth_gt_for_latent
+                    )  # [B, 4, h, w]
 
                 # Text embedding
                 text_embed = self.empty_text_embed.to(device).repeat(
@@ -254,18 +243,19 @@ class MarigoldTrainer:
                     # Masked latent loss (MSE loss)
                     if self.gt_mask_type is not None:
                         latent_loss = self.loss(
+                            depth_pred[valid_mask_down].float(),
+                            gt_depth_latent[valid_mask_down].float(),
+                        )
+                        pixel_loss = self.l1_loss(
                             depth[valid_mask_for_latent].float(),
                             depth_gt_for_loss[valid_mask_for_latent].float(),
                         )
                     else:
                         latent_loss = self.loss(depth.float(), depth_gt_for_loss.float())
-                    ssim_loss = self.ssim_loss(
-                        depth.float(),
-                        depth_gt_for_loss.float(),
-                    )
+                    
                     # update loss
-                    lambda_ssim = self.cfg.ssim_loss.get('lambda', 1.0)
-                    loss = latent_loss.mean() + lambda_ssim * ssim_loss.mean()
+                    loss = latent_loss.mean() + pixel_loss.mean()
+                    
                     self.train_metrics.update("loss", loss.item())
                 else:
                     # FFT latent loss (FFT loss)

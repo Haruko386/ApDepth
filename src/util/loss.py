@@ -38,6 +38,8 @@ def get_loss(loss_name, **kwargs):
         criterion = torch.nn.L1Loss(**kwargs)
     elif "l1_loss_with_mask" == loss_name:
         criterion = L1LossWithMask(**kwargs)
+    elif "ssim" == loss_name:
+        criterion = SSIM(**kwargs)
     elif "mean_abs_rel" == loss_name:
         criterion = MeanAbsRelLoss()
     elif "latent_freq_loss" == loss_name:
@@ -48,8 +50,8 @@ def get_loss(loss_name, **kwargs):
         criterion = HuberLoss(**kwargs)
     else:
         raise NotImplementedError
-
     return criterion
+
 
 def compute_normals_from_depth(depth_map, fx, fy, cx, cy):
 

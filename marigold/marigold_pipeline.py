@@ -1,5 +1,9 @@
-# Copyright 2023 Bingxin Ke, ETH Zurich. All rights reserved.
-# Last modified: 2024-05-24
+# Last modified: 2026-03-04
+#
+# Copyright 2026 Jiawei Wang, SJZU. All rights reserved.
+# 
+# This file has been modified from the original version.
+# Original copyright (c) 2023 Bingxin Ke, ETH Zurich. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,8 +19,8 @@
 # --------------------------------------------------------------------------
 # If you find this code useful, we kindly ask you to cite our paper in your work.
 # Please find bibtex at: https://github.com/prs-eth/Marigold#-citation
-# More information about the method can be found at https://marigoldmonodepth.github.io
-# --------------------------------------------------------------------------
+# If you use or adapt this code, please attribute to https://github.com/prs-eth/marigold.
+# More information about the method can be found at https://marigoldmonodepth.githu
 
 
 import logging
@@ -138,20 +142,19 @@ class MarigoldPipeline(DiffusionPipeline):
         self.default_processing_resolution = default_processing_resolution
 
         self.empty_text_embed = None
-
-        self._fft_masks = {}
         
         da2_config = {
-            'encoder': 'vitl',  # 'vits' 'vitb', 'vitl', 'vitg'
-            'features': 256, # '64' '128', '256','384'
-            'out_channels': [256, 512, 1024, 1024], # [48, 96, 192, 384], [96, 192, 384, 768], [256, 512, 1024, 1024], [1536, 1536, 1536, 1536]
+            'encoder': 'vitg',  # 'vits' 'vitb', 'vitl', 'vitg'
+            'features': 384, # '64' '128', '256','384'
+            'out_channels': [1536, 1536, 1536, 1536], # [48, 96, 192, 384], [96, 192, 384, 768], [256, 512, 1024, 1024], [1536, 1536, 1536, 1536]
         }
         
-        # init DA2
+        # Init DA2
         if da2_config is not None:
             self.da2 = DepthAnythingV2(**da2_config)
             self.da2.load_state_dict(torch.load(f'DA2/checkpoints/depth_anything_v2_{da2_config["encoder"]}.pth', map_location='cpu'))
             self.da2.to(device="cuda").eval()
+            print(f"DepthAnything v2 ({da2_config['encoder']}) loaded for Marigold Pipeline.")
         else:
             self.da2 = None
 
