@@ -35,11 +35,11 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 ## 🛠️ Setup
 The Model was trained on:
 
-- Ubuntu 22.04 LTS, Python 3.12.9,  CUDA 11.8, Nvidia RTX 6000 Ada Generation
+- Ubuntu 22.04 LTS, Python 3.12.9,  CUDA 11.8, `NVIDIA RTX 6000 Ada Generation`
 
 The inference code was tested on:
 
-- Ubuntu 22.04 LTS, Python 3.12.9,  CUDA 11.8, Nvidia GeForce RTX 4090
+- Ubuntu 22.04 LTS, Python 3.12.9,  CUDA 11.8, `NVIDIA GeForce RTX 4090`
 
 ### 🪧 A Note for Windows users
 
@@ -119,7 +119,7 @@ The default settings are optimized for the best result. However, the behavior of
 
 ### ⬇ Checkpoint cache
 
-By default, the [checkpoint](https://huggingface.co/prs-eth/marigold-v1-0) is stored in the Hugging Face cache.
+By default, the [checkpoint](https://huggingface.co/developy/ApDepth) is stored in the Hugging Face cache.
 The `HF_HOME` environment variable defines its location and can be overridden, e.g.:
 
 ```bash
@@ -136,7 +136,7 @@ At inference, specify the checkpoint path:
 
 ```bash
 python run.py \
-    --checkpoint checkpoints/marigold-v1-0 \
+    --checkpoint checkpoints/ApDepth \
     --ensemble_size 1 \
     --input_rgb_dir input/in-the-wild_example\
     --output_dir output/in-the-wild_example
@@ -168,13 +168,18 @@ bash script/eval/11_infer_nyu.sh
 bash script/eval/12_eval_nyu.sh
 ```
 
-Or you can just run
+Alternatively, use the following script to evaluate all datasets.
+
 ```bash
 bash script/eval/00_test_all.sh
 ```
 You can get the result under `output/eval`
 
-Note: although the seed has been set, the results might still be slightly different on different hardware.
+> [!IMPORTANT]
+>
+> Although the seed has been set, the results might still be slightly different on different hardware.
+
+
 
 ## 🏋️ Training
 
