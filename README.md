@@ -84,17 +84,19 @@ Ensure you have Docker installed. Run the following command in the root director
 
 ```bash
 docker build -t apdepth:latest .
-2. Run the Container
+```
+
+**2. Run the Container**
 
 To utilize GPU acceleration, ensure the NVIDIA Container Toolkit is installed. We recommend mounting your local input and output directories to easily access your inference results:
 
-Bash
+```Bash
 docker run --gpus all -it --rm \
     -v $(pwd)/input:/workspace/ApDepth/input \
     -v $(pwd)/output:/workspace/ApDepth/output \
     apdepth:latest
 Once inside the container, the apdepth conda environment is activated by default, and you can directly execute the inference or training scripts.
-
+```
 ## 🏃 Testing on your images
 
 ### 📷 Prepare images
