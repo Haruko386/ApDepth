@@ -252,6 +252,7 @@ class MarigoldTrainer:
                         )
                     else:
                         latent_loss = self.loss(depth.float(), depth_gt_for_loss.float())
+                        pixel_loss = self.l1_loss(depth.float(), depth_gt_for_latent.float())
                     
                     # update loss
                     loss = latent_loss.mean() + pixel_loss.mean()

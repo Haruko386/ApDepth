@@ -83,17 +83,14 @@ class DIODEDataset(BaseDepthDataset):
             )
             rasters.update(depth_data)
 
-            # --- START: Modified Mask Logic with Sobel Filter ---
-            
-            # 1. Get raw depth as numpy array [H, W] for scipy processing
-            # depth_raw_linear is [1, H, W] tensor
+            # Modified Mask Logic with Sobel Filter
             depth_tensor = rasters["depth_raw_linear"]
             depth_numpy = depth_tensor.squeeze().cpu().numpy()
 
-            # 2. Read original mask provided by dataset
+            # Read original mask provided by dataset
             mask_numpy = self._read_npy_file(mask_rel_path).astype(bool).squeeze()
 
-            # 3. Apply Sobel gradient filter (replicated from diode.py)
+            # Apply Sobel gradient filter (replicated from diode.py)
             # This removes high-frequency edges where prediction is often difficult/ambiguous
             dx = ndimage.sobel(depth_numpy, 0)  # horizontal derivative
             dy = ndimage.sobel(depth_numpy, 1)  # vertical derivative
@@ -102,7 +99,7 @@ class DIODEDataset(BaseDepthDataset):
             # Create edge mask: keep pixels where gradient is low
             edge_mask = grad <= 0.3
 
-            # 4. Apply range and validity checks
+            # Apply range and validity checks
             # Replicating logic: valid_mask & (depth >= 0.6) & (depth <= 350) & (~np.isnan) & (~np.isinf)
             range_mask = (
                 (depth_numpy >= self.min_depth) & 
@@ -111,17 +108,15 @@ class DIODEDataset(BaseDepthDataset):
                 (~np.isinf(depth_numpy))
             )
 
-            # 5. Combine all masks
+            # Combine all masks
             final_mask_numpy = mask_numpy & edge_mask & range_mask
 
-            # 6. Convert back to torch tensor
+            # Convert back to torch tensor
             mask = torch.from_numpy(final_mask_numpy).bool()
             
             # Update rasters
             rasters["valid_mask_raw"] = mask.clone()
             rasters["valid_mask_filled"] = mask.clone()
-            
-            # --- END: Modified Mask Logic ---
 
         other = {"index": index, "rgb_relative_path": rgb_rel_path}
 
