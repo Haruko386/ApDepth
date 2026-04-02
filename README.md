@@ -74,7 +74,26 @@ pip install -r requirements.txt
 > Keep the environment activated before running the inference script. 
 > Activate the environment again after restarting the terminal session.
 
+### 🐳 Docker Setup (Recommended)
 
+For a streamlined setup, we provide a Docker environment that pre-installs all necessary dependencies, including PyTorch, CUDA, and evaluation tools.
+
+**1. Build the Docker Image**
+
+Ensure you have Docker installed. Run the following command in the root directory of the repository:
+
+```bash
+docker build -t apdepth:latest .
+2. Run the Container
+
+To utilize GPU acceleration, ensure the NVIDIA Container Toolkit is installed. We recommend mounting your local input and output directories to easily access your inference results:
+
+Bash
+docker run --gpus all -it --rm \
+    -v $(pwd)/input:/workspace/ApDepth/input \
+    -v $(pwd)/output:/workspace/ApDepth/output \
+    apdepth:latest
+Once inside the container, the apdepth conda environment is activated by default, and you can directly execute the inference or training scripts.
 
 ## 🏃 Testing on your images
 
