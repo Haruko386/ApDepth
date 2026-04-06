@@ -7,8 +7,6 @@ export BASE_DATA_DIR=/root/Dataset
 bash script/eval/11_infer_nyu.sh
 bash script/eval/12_eval_nyu.sh
 
-export BASE_DATA_DIR=/root/Datasets
-
 bash script/eval/21_infer_kitti.sh
 bash script/eval/22_eval_kitti.sh
 

@@ -2,17 +2,22 @@
 set -e
 set -x
 
-ckpt_dir=${ckpt_dir:-checkpoint}
+ckpt_dir=${ckpt_dir:-checkpoints}
+target_dir=${ckpt_dir}/ApDepth
+
+repo_id="developy/ApDepth"
+
 mkdir -p $ckpt_dir
-cd $ckpt_dir
 
-checkpoint_name=$1
-
-if [ -d $checkpoint_name ]; then
+if [ -d "$target_dir" ]; then
+    echo "Checkpoint already exists at $target_dir, skip download."
     exit 0
 fi
 
-wget -nv --show-progress https://share.phys.ethz.ch/~pf/bingkedata/marigold/checkpoint/${checkpoint_name}.tar
+pip install -q huggingface_hub
 
-tar -xf ${checkpoint_name}.tar
-rm ${checkpoint_name}.tar
+huggingface-cli download $repo_id \
+    --local-dir $target_dir \
+    --local-dir-use-symlinks False
+
+echo "Model downloaded to $target_dir"
