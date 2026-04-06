@@ -1,5 +1,5 @@
-# An official reimplemented version of Marigold training script
-# Last modified: 2024-05-17
+# An official reimplemented version of ApDepth training script
+# Last modified: 2026-04-06
 #
 # Copyright 2023 Bingxin Ke, ETH Zurich. All rights reserved.
 #
@@ -32,7 +32,7 @@ from omegaconf import OmegaConf
 from torch.utils.data import ConcatDataset, DataLoader
 from tqdm import tqdm
 
-from marigold.marigold_pipeline import MarigoldPipeline
+from apdepth.apdepth_pipeline import ApDepthPipeline
 from src.dataset import BaseDepthDataset, DatasetMode, get_dataset
 from src.dataset.mixed_sampler import MixedBatchSampler
 from src.trainer import get_trainer_cls
@@ -63,7 +63,7 @@ if "__main__" == __name__:
     parser.add_argument( 
         "--config",
         type=str,
-        default="Marigold/config/train_marigold.yaml",
+        default="ApDepth/config/train_apdepth.yaml",
         help="Path to config file.",
     )
     parser.add_argument(
@@ -89,7 +89,7 @@ if "__main__" == __name__:
         help="On Slurm cluster, do not copy data to local scratch",
     )
     parser.add_argument(
-        "--base_data_dir", type=str, default="./Dataset", help="directory of training data",
+        "--base_data_dir", type=str, default="/root/Dataset", help="directory of training data",
     )
     parser.add_argument(
         "--base_ckpt_dir",
@@ -219,7 +219,7 @@ if "__main__" == __name__:
     if is_on_slurm() and (not args.do_not_copy_data):
         # local scratch dir
         original_data_dir = base_data_dir
-        base_data_dir = os.path.join(get_local_scratch_dir(), "Marigold_data")
+        base_data_dir = os.path.join(get_local_scratch_dir(), "ApDepth_data")
         # copy data
         required_data_list = find_value_in_omegaconf("dir", cfg_data)
         # if cfg_train.visualize.init_latent_path is not None:
@@ -326,7 +326,7 @@ if "__main__" == __name__:
 
     # -------------------- Model --------------------
     _pipeline_kwargs = cfg.pipeline.kwargs if cfg.pipeline.kwargs is not None else {}
-    model = MarigoldPipeline.from_pretrained(
+    model = ApDepthPipeline.from_pretrained(
         os.path.join(base_ckpt_dir, cfg.model.pretrained_path), **_pipeline_kwargs
     )
 

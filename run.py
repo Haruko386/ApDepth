@@ -30,7 +30,7 @@ import torch.nn.functional as F
 from PIL import Image
 from tqdm.auto import tqdm
 
-from marigold import MarigoldPipeline
+from apdepth import ApDepthPipeline
 
 EXTENSION_LIST = [".jpg", ".jpeg", ".png"]
 
@@ -42,12 +42,12 @@ if "__main__" == __name__:
 
     # -------------------- Arguments --------------------
     parser = argparse.ArgumentParser(
-        description="Run single-image depth estimation using Marigold."
+        description="Run single-image depth estimation using ApDepth."
     )
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="prs-eth/marigold-lcm-v1-0",
+        default="checkpoints/apdepth",
         help="Checkpoint path or hub name.",
     )
 
@@ -199,7 +199,7 @@ if "__main__" == __name__:
         dtype = torch.float32
         variant = None
 
-    pipe: MarigoldPipeline = MarigoldPipeline.from_pretrained(
+    pipe: ApDepthPipeline = ApDepthPipeline.from_pretrained(
         checkpoint_path, variant=variant, torch_dtype=dtype
     )
     # unet = UNet2DConditionModel.from_pretrained(os.path.join(checkpoint_path, f'unet'))
