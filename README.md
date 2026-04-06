@@ -9,18 +9,22 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 
 [**Haruko386**](https://haruko386.github.io/),
 [Shuai Yuan](https://syjz.teacher.360eol.com/teacherBasic/preview?teacherId=23776),
-[Mingbo Lei](https://github.com/Ltohka)
+[Mingbo Lei](https://github.com/Ltohka), 
+[Yibo Chen](#)
 
 ![cover](doc/cover.png)
 
->We present **ApDepth**, a diffusion model, and associated fine-tuning protocol for monocular depth estimation. Based on Marigold. Its core innovation lies in addressing the deficiency of diffusion models in feature representation capability. Our model followed Marigold, derived from Stable Diffusion and fine-tuned with synthetic data: Hypersim and VKitti, achieved ideal results in object edge refinement.
+> We present **ApDepth**, a deterministic single-step diffusion framework for monocular depth estimation. Built upon Marigold (derived from Stable Diffusion) and fine-tuned on synthetic datasets (Hypersim and Virtual KITTI), ApDepth overcomes the feature representation bottlenecks of standard diffusion models. Ultimately, our framework achieves **highly competitive geometric accuracy** and **exceptional object edge refinement**, all while delivering significantly accelerated inference speeds.
 
 ## 📢 News
-- 2025-10-25: Inspired by DepthMaster, we propose a two-stage loss function training strategy based on `Apepth V1-0`. In the first stage, we perform foundational training using MSE loss. In the second stage, we learn edge structures through FFT loss. Based on this, we introduce Apepth V1-1.
-- 2025-10-09: We propose a novel diffusion-based deep estimation framework guided by pre-trained models.
-- 2025-09-23: We change Marigold from **Stochastic multi-step generation** to **Deterministic one-step perception**
-- 2025-08-10: Trying to make some optimizations in Feature Expression<br>
-- 2025-05-08: Clone Marigold to local.<br>
+- **2026-04-06:** `ApDepth V2-0` is released!
+- **2026-04-03:** We officially release the complete code for **ApDepth**! The repository now includes the full coarse-to-fine two-stage training pipeline and evaluation scripts.
+- **2026-01-15:** We successfully introduce a spatial-preserving **Conv Adapter** and a **Cosine Similarity Loss** to enhance feature alignment, alongside a **Pixel-level $L_1$ Loss** to establish an accurate global metric scale.
+- **2025-10-25:** Inspired by DepthMaster, we propose a two-stage loss function training strategy based on `ApDepth V1-0`. In the first stage, we perform foundational training using MSE loss. In the second stage, we learn edge structures through FFT loss. Based on this, we introduce `ApDepth V1-1`.
+- **2025-10-09:** We propose a novel diffusion-based depth estimation framework guided by pre-trained models.
+- **2025-09-23:** We change Marigold from **Stochastic multi-step generation** to **Deterministic one-step perception**.
+- **2025-08-10:** Trying to make some optimizations in Feature Expression.
+- **2025-05-08:** Clone `Marigold` to local.
 
 ## 🚀 Usage
 
@@ -74,7 +78,7 @@ pip install -r requirements.txt
 > Keep the environment activated before running the inference script. 
 > Activate the environment again after restarting the terminal session.
 
-### 🐳 Docker Setup (Recommended)
+### 🐳 Docker Setup
 
 For a streamlined setup, we provide a Docker environment that pre-installs all necessary dependencies, including PyTorch, CUDA, and evaluation tools.
 
@@ -111,13 +115,14 @@ This setting corresponds to our paper. For academic comparison, please run with 
 
 ```bash
 python run.py \
-    --checkpoint prs-eth/marigold-v1-0 \
+    --checkpoint checkpoints/ApDepth \
     --ensemble_size 1 \
-    --input_rgb_dir input/in-the-wild_example \
-    --output_dir output/in-the-wild_example
+    --processing_res 0 \
+    --input_rgb_dir input/example-1 \
+    --output_dir output/example-1
 ```
 
-You can find all results in `output/in-the-wild_example`. Enjoy!
+You can find all results in `output/example-1`. Enjoy!
 
 ### ⚙️ Inference settings
 
@@ -125,9 +130,6 @@ The default settings are optimized for the best result. However, the behavior of
 
 - Trade-offs between the **accuracy** and **speed** (for both options, larger values result in better accuracy at the cost of slower inference.)
   - `--ensemble_size`: Number of inference passes in the ensemble. 
-
-- By default, the inference script resizes input images to the *processing resolution*, and then resizes the prediction back to the original resolution. This gives the best quality, as Stable Diffusion, from which ApDepth is derived, performs best at 768x768 resolution.  
-  
   - `--processing_res`: the processing resolution; set as 0 to process the input resolution directly. When unassigned (`None`), will read default setting from model config. Default: ~~768~~ `None`.
   - `--output_processing_res`: produce output at the processing resolution instead of upsampling it to the input resolution. Default: False.
   - `--resample_method`: the resampling method used to resize images and depth predictions. This can be one of `bilinear`, `bicubic`, or `nearest`. Default: `bilinear`.
@@ -137,31 +139,6 @@ The default settings are optimized for the best result. However, the behavior of
 - `--batch_size`: Batch size of repeated inference. Default: 0 (best value determined automatically).
 - `--color_map`: [Colormap](https://matplotlib.org/stable/users/explain/colors/colormaps.html) used to colorize the depth prediction. Default: Spectral. Set to `None` to skip colored depth map generation.
 - `--apple_silicon`: Use Apple Silicon MPS acceleration.
-
-### ⬇ Checkpoint cache
-
-By default, the [checkpoint](https://huggingface.co/developy/ApDepth) is stored in the Hugging Face cache.
-The `HF_HOME` environment variable defines its location and can be overridden, e.g.:
-
-```bash
-export HF_HOME=$(pwd)/cache
-```
-<!-- 
-Alternatively, use the following script to download the checkpoint weights locally:
-
-```bash
-bash script/download_weights.sh marigold-v1-0
-``` -->
-
-At inference, specify the checkpoint path:
-
-```bash
-python run.py \
-    --checkpoint checkpoints/ApDepth \
-    --ensemble_size 1 \
-    --input_rgb_dir input/in-the-wild_example\
-    --output_dir output/in-the-wild_example
-```
 
 ## 🦿 Evaluation on test datasets <a name="evaluation"></a>
 
@@ -192,6 +169,7 @@ bash script/eval/12_eval_nyu.sh
 Alternatively, use the following script to evaluate all datasets.
 
 ```bash
+# Evaluate all datasets
 bash script/eval/00_test_all.sh
 ```
 You can get the result under `output/eval`
@@ -225,16 +203,16 @@ Prepare for [Hypersim](https://github.com/apple/ml-hypersim) and [Virtual KITTI 
 
 ------------
 
-**Run first stage training script**
+**Run training script**
 
 ```bash
-python train.py --config config/train_marigold.yaml --no_wandb
+python train.py --config config/train_apdepth.yaml --no_wandb
 ```
 
 Resume from a checkpoint, e.g.
 
 ```bash
-python train.py --resume_run output/train_marigold/checkpoint/latest --no_wandb
+python train.py --resume_run output/train_apdepth/checkpoint/latest --no_wandb
 ```
 
 ------------
@@ -255,10 +233,15 @@ Please refer to [this](CONTRIBUTING.md) instruction.
 
 ## 🤔 Troubleshooting
 
-| Problem                                                                                                                                      | Solution                                                       |
-|----------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------|
-| (Windows) Invalid DOS bash script on WSL                                                                                                     | Run `dos2unix <script_name>` to convert script format          |
-| (Windows) error on WSL: `Could not load library libcudnn_cnn_infer.so.8. Error: libcuda.so: cannot open shared object file: No such file or directory` | Run `export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH` |
+| Problem                                                                                                                     | Solution                                                                  |
+| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| (Windows) Invalid DOS bash script on WSL / `$'\r': command not found` / `set: invalid option`                               | Run `dos2unix <script_name>` to convert script format                     |
+| (Windows) Multiple `.sh` scripts fail due to CRLF line endings                                                              | Run `find . -name "*.sh" -exec dos2unix {} +` to fix all scripts          |
+| (Windows) error on WSL: `Could not load library libcudnn_cnn_infer.so.8. Error: libcuda.so: cannot open shared object file` | Run `export LD_LIBRARY_PATH=/usr/lib/wsl/lib:$LD_LIBRARY_PATH`            |
+| HuggingFace model download incomplete / corrupted                                                                           | Re-run with `--resume-download` or ensure stable network                  |
+| `model_index.json not found` when loading checkpoint                                                                        | Ensure the model is fully downloaded and placed at `checkpoints/ApDepth/` |
+| Dataset loading error: `tarfile.ReadError: unexpected end of data`                                                          | Re-download dataset; the `.tar` file is likely corrupted or incomplete    |
+
 
 
 ## 🎓 Citation
