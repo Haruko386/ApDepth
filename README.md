@@ -115,7 +115,7 @@ This setting corresponds to our paper. For academic comparison, please run with 
 
 ```bash
 python run.py \
-    --checkpoint checkpoints/ApDepth \
+    --checkpoint checkpoint/ApDepth \
     --ensemble_size 1 \
     --processing_res 0 \
     --input_rgb_dir input/example-1 \
