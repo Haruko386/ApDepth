@@ -19,4 +19,4 @@ bash script/eval/52_eval_diode.sh
 bash script/eval/31_infer_eth3d.sh
 bash script/eval/32_eval_eth3d.sh
 
-# We test our model on a single Nvidia RTX 5080 GPU with 16GB Memory size
+# We test our model on a single Nvidia RTX 4090 GPU with 24GB Memory size
