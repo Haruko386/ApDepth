@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ----------
 
+## [ApDepth-v2-1] - 2026-04-06
+
+<a><img src="./doc/apdepth-v2-0/train.png" alt="Framework" align=center></a>
+
 ## Goodbye 2025, 2026 is near 🎉
 
 ## [ApDepth-v1-2] - 2025-11-25
@@ -33,7 +37,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 >We change Marigold from `Stochastic multi-step generation` to `Deterministic one-step perception`. And achieve the same result.
 
-<a><img src="./doc/changelog/all-framework.png" alt="Framework" align=center></a>
+<a><img src="./doc/cover.jpg" alt="Framework" align=center></a>
 
 ### Result
 | Method | # Training Samples | | NYUv2 | | KITTI | | ETH3D | | ScanNet | | DIODE | | Avg. Rank |
