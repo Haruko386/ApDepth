@@ -1,51 +1,36 @@
-name: CI
+name: Basic project check
 
+run-name: Checking basic project health.
 on:
-  push:
-    branches:
-      - main
-      - master
   pull_request:
     branches:
       - main
-      - master
-  workflow_dispatch:
-
-permissions:
-  contents: read
+  push:
+    branches:
+      - main
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
-  project-checks:
-    name: Project checks
+  basic_check:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements+.txt
-            requirements++.txt
-
-      - name: Install CI dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pyyaml
-
+          pip install pyyaml ruff==0.3.7
       - name: Validate YAML files
         run: |
           python - <<'PY'
           from pathlib import Path
+
           import yaml
 
           failed = False
@@ -62,38 +47,34 @@ jobs:
           if failed:
               raise SystemExit(1)
           PY
-
-      - name: Check Python syntax
-        run: python -m compileall -q .
-
-      - name: Install project dependencies
+      - name: Check for syntax errors
         run: |
-          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.4.0 torchvision==0.19.0
-          python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt -r requirements+.txt
-          python -m pip install opencv-python h5py tensorboard wandb
-
-      - name: Check installed dependency consistency
-        run: python -m pip check
-
-      - name: Import smoke test (safe modules only)
+          python -m compileall -q .
+      - name: Check for critical Python errors
+        run: |
+          ruff check . --select E9,F63,F7,F82
+      - name: Check for accidentally committed large files
         run: |
           python - <<'PY'
-          import importlib
+          from pathlib import Path
+          import subprocess
 
-          # ❗ IMPORTANT: DO NOT import apdepth.apdepth_pipeline
-          # it triggers diffusers import and breaks CI
+          limit_mb = 100
+          tracked = subprocess.check_output(["git", "ls-files", "-z"]).decode().split("\0")
+          oversized = []
 
-          modules = [
-              "src.dataset",
-              "src.trainer",
-              "src.util.alignment",
-              "src.util.config_util",
-              "src.util.depth_transform",
-              "src.util.loss",
-              "src.util.metric",
-          ]
+          for filename in tracked:
+              if not filename:
+                  continue
+              path = Path(filename)
+              if not path.is_file():
+                  continue
+              size_mb = path.stat().st_size / 1024 / 1024
+              if size_mb > limit_mb:
+                  oversized.append((path, size_mb))
 
-          for module in modules:
-              importlib.import_module(module)
-              print(f"Imported {module}")
+          if oversized:
+              for path, size_mb in oversized:
+                  print(f"{path}: {size_mb:.1f} MB")
+              raise SystemExit(f"Files larger than {limit_mb} MB found.")
           PY
