@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  project-checks:
+    name: Project checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements+.txt
+            requirements++.txt
+
+      - name: Install CI dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyyaml
+
+      - name: Validate YAML files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          failed = False
+          for path in sorted(list(Path(".").rglob("*.yml")) + list(Path(".").rglob("*.yaml"))):
+              if ".git" in path.parts:
+                  continue
+              try:
+                  with path.open("r", encoding="utf-8") as handle:
+                      yaml.safe_load(handle)
+              except Exception as exc:
+                  failed = True
+                  print(f"{path}: {exc}")
+
+          if failed:
+              raise SystemExit(1)
+          PY
+
+      - name: Check Python syntax
+        run: python -m compileall -q .
+
+      - name: Install project dependencies
+        run: |
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.4.0 torchvision==0.19.0
+          python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt -r requirements+.txt
+          python -m pip install opencv-python h5py tensorboard wandb
+
+      - name: Check installed dependency consistency
+        run: python -m pip check
+
+      - name: Import smoke test
+        run: |
+          python - <<'PY'
+          import importlib
+
+          modules = [
+              "apdepth.apdepth_pipeline",
+              "src.dataset",
+              "src.trainer",
+              "src.util.alignment",
+              "src.util.config_util",
+              "src.util.depth_transform",
+              "src.util.loss",
+              "src.util.metric",
+              "DA2.depth_anything_v2.dpt",
+              "DA2.metric_depth.depth_anything_v2.dpt",
+          ]
+
+          for module in modules:
+              importlib.import_module(module)
+              print(f"Imported {module}")
+          PY
