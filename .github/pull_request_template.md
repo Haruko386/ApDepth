@@ -18,7 +18,3 @@
 ## Test Results
 
 <!-- Paste relevant commands and results, screenshots, or logs here. -->
-
-## Additional Notes
-
-<!-- Add anything reviewers should know before reviewing this PR. -->
