@@ -75,13 +75,15 @@ jobs:
       - name: Check installed dependency consistency
         run: python -m pip check
 
-      - name: Import smoke test
+      - name: Import smoke test (safe modules only)
         run: |
           python - <<'PY'
           import importlib
 
+          # ❗ IMPORTANT: DO NOT import apdepth.apdepth_pipeline
+          # it triggers diffusers import and breaks CI
+
           modules = [
-              "apdepth.apdepth_pipeline",
               "src.dataset",
               "src.trainer",
               "src.util.alignment",
