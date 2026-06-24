@@ -89,8 +89,6 @@ jobs:
               "src.util.depth_transform",
               "src.util.loss",
               "src.util.metric",
-              "DA2.depth_anything_v2.dpt",
-              "DA2.metric_depth.depth_anything_v2.dpt",
           ]
 
           for module in modules:
