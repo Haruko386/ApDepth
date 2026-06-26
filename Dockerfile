@@ -16,6 +16,10 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86
     /opt/conda/bin/conda clean -a -y && \
     ln -sf /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
 
+# Accept Anaconda channel Terms of Service
+RUN /opt/conda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+    /opt/conda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
 WORKDIR /workspace/ApDepth
 
 COPY environment.yaml requirements.txt requirements+.txt requirements++.txt ./
@@ -28,6 +32,7 @@ RUN /opt/conda/envs/apdepth/bin/pip install --no-cache-dir -r requirements.txt &
 
 COPY . .
 
-SHELL ["conda", "run", "-n", "apdepth", "/bin/bash", "-c"]
+ENV CONDA_DEFAULT_ENV=apdepth
+ENV PATH="/opt/conda/envs/apdepth/bin:/opt/conda/bin:$PATH"
 
 CMD ["/bin/bash"]
