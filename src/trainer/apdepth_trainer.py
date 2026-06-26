@@ -33,6 +33,7 @@ from typing import List, Union
 import numpy as np
 import torch
 from omegaconf import OmegaConf
+from safetensors.torch import load_file
 from torch.nn import Conv2d
 from torch.nn.parameter import Parameter
 from torch.optim import Adam
@@ -566,7 +567,7 @@ class ApDepthTrainer:
 
         # Save UNet
         unet_path = os.path.join(ckpt_dir, "unet")
-        self.model.unet.save_pretrained(unet_path, safe_serialization=False)
+        self.model.unet.save_pretrained(unet_path, safe_serialization=True)
         logging.info(f"UNet is saved to: {unet_path}")
 
         if save_train_state:
@@ -599,10 +600,12 @@ class ApDepthTrainer:
     ):
         logging.info(f"Loading checkpoint from: {ckpt_path}")
         # Load UNet
-        _model_path = os.path.join(ckpt_path, "unet", "diffusion_pytorch_model.bin")
-        self.model.unet.load_state_dict(
-            torch.load(_model_path, map_location=self.device)
-        )
+        _model_path = self._get_unet_checkpoint_path(ckpt_path)
+        if _model_path.endswith(".safetensors"):
+            state_dict = load_file(_model_path, device=str(self.device))
+        else:
+            state_dict = torch.load(_model_path, map_location=self.device)
+        self.model.unet.load_state_dict(state_dict)
         self.model.unet.to(self.device)
         logging.info(f"UNet parameters are loaded from {_model_path}")
 
@@ -631,3 +634,20 @@ class ApDepthTrainer:
 
     def _get_backup_ckpt_name(self):
         return f"iter_{self.effective_iter:06d}"
+
+    @staticmethod
+    def _get_unet_checkpoint_path(ckpt_path):
+        unet_dir = os.path.join(ckpt_path, "unet")
+        for filename in (
+            "diffusion_pytorch_model.safetensors",
+            "diffusion_pytorch_model.bin",
+        ):
+            model_path = os.path.join(unet_dir, filename)
+            if os.path.exists(model_path):
+                return model_path
+        raise FileNotFoundError(
+            "UNet checkpoint not found. Expected either "
+            f"{os.path.join(unet_dir, 'diffusion_pytorch_model.safetensors')} "
+            "or "
+            f"{os.path.join(unet_dir, 'diffusion_pytorch_model.bin')}."
+        )
