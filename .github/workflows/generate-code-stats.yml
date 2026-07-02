@@ -1,0 +1,45 @@
+name: Generate Code Stats
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate code stats SVG
+        uses: Haruko386-UnOffical/RepositoryBlame@main
+        with:
+          output: dist/code-stats.svg
+          title: "Code Stats"
+          min-percent: "0.8"
+          width: "900"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          ignore: |
+            vendor/**
+            node_modules/**
+            dist/**
+            build/**
+            target/**
+            *.lock
+          users: |
+            Haruko386=Haruko386,tryeverypossible@163.com
+
+      - name: Push SVG to codeStats branch
+        uses: crazy-max/ghaction-github-pages@v4
+        with:
+          target_branch: codeStats
+          build_dir: dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
