@@ -295,6 +295,10 @@ if "__main__" == __name__:
     model = ApDepthPipeline.from_pretrained(
         os.path.join(base_ckpt_dir, cfg.model.pretrained_path), **_pipeline_kwargs
     )
+    unet = UNet2DConditionModel.from_pretrained(
+        os.path.join(base_ckpt_dir, cfg.model.pretrained_path, "unet")
+    )
+    model.unet = unet
 
     # -------------------- Trainer --------------------
     # Exit time
