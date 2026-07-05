@@ -197,13 +197,40 @@ export BASE_CKPT_DIR=YOUR_CHECKPOINT_DIR  # directory of pretrained checkpoint
 
 Download Stable Diffusion v2 [checkpoint](https://huggingface.co/sd2-community/stable-diffusion-2) into `${BASE_CKPT_DIR}`
 
-Download the checkpoint of [Depth-Anything-V2](https://github.com/DepthAnything/Depth-Anything-V2) into `DA2/checkpoints/`
+Download the checkpoint of [Depth-Anything-V2](https://github.com/DepthAnything/Depth-Anything-V2) into `DA2/checkpoints/`. Stage 1 uses the ViT-G checkpoint by default at `DA2/checkpoints/depth_anything_v2_vitg.pth` as the external semantic encoder.
 
-Prepare for [Hypersim](https://github.com/apple/ml-hypersim) and [Virtual KITTI 2](https://europe.naverlabs.com/research/computer-vision/proxy-virtual-worlds-vkitti-2/) datasets and save into `${BASE_DATA_DIR}`. Please refer to [this README](script/dataset_preprocess/hypersim/README.md) for Hypersim preprocessing.
+Prepare for [Hypersim](https://github.com/apple/ml-hypersim) and [Virtual KITTI 2](https://europe.naverlabs.com/research/computer-vision/proxy-virtual-worlds-vkitti-2/) datasets and save into `${BASE_DATA_DIR}`. Please refer to [this README](script/dataset_preprocess/hypersim/README.md) for Hypersim preprocessing. Stage 1 uses `config/dataset/dataset_apdepth_train_s1.yaml`; the main training stage uses `config/dataset/dataset_train.yaml`.
 
 ------------
 
-**Run training script**
+**Stage 1: feature alignment pre-training**
+
+Stage 1 has been integrated into this repository. It trains the denoising U-Net and DINOv2 adapter in feature space before the main ApDepth training stage.
+
+```bash
+bash script/apdepth_train_s1.sh
+```
+
+Equivalent direct command:
+
+```bash
+python apdepth_train_s1.py \
+    --config config/apdepth_train_s1.yaml \
+    --base_data_dir ${BASE_DATA_DIR} \
+    --base_ckpt_dir ${BASE_CKPT_DIR} \
+    --output_dir output/stage1 \
+    --no_wandb
+```
+
+Resume Stage 1 from a checkpoint, e.g.
+
+```bash
+python apdepth_train_s1.py --resume_run output/stage1/checkpoint/latest --no_wandb
+```
+
+------------
+
+**Stage 2: main ApDepth training**
 
 ```bash
 python train.py --config config/train_apdepth.yaml --no_wandb

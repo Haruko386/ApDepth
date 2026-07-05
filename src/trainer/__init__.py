@@ -2,10 +2,12 @@
 # Last modified: 2024-05-17
 
 from .apdepth_trainer import ApDepthTrainer
+from .apdepth_trainer_s1 import ApDepthTrainerS1
 
 
 trainer_cls_name_dict = {
     "ApDepthTrainer": ApDepthTrainer,
+    "ApDepthTrainerS1": ApDepthTrainerS1,
 }
 
 
