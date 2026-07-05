@@ -21,709 +21,315 @@
 # Please find bibtex at: https://github.com/Haruko386/ApDepth#-citation
 # More information about the method can be found at https://haruko386.github.io/apdepth
 # --------------------------------------------------------------------------
+
+import argparse
 import logging
 import os
-import random
 import shutil
-from datetime import datetime
-from typing import List, Union
+from datetime import datetime, timedelta
+from typing import List
 
-import numpy as np
 import torch
-from torch.nn import Conv2d
-from torch.nn.parameter import Parameter
 from omegaconf import OmegaConf
-from torch.optim import Adam
-from torch.optim.lr_scheduler import LambdaLR
-from torch.utils.data import DataLoader
+from torch.utils.data import ConcatDataset, DataLoader
 from tqdm import tqdm
-from PIL import Image
-import torch.nn.functional as F
 
-from apdepth import ApDepthPipeline, ApDepthDepthOutput
-from src.util import metric
-from src.util.data_loader import skip_first_batches
-from src.util.logging_util import tb_logger, eval_dic_to_text
-from src.util.loss import get_loss, SSIM
-from src.util.lr_scheduler import IterExponential
-from src.util.metric import MetricTracker
-from src.util.alignment import (
-    align_depth_least_square,
-    depth2disparity,
-    disparity2depth,
+
+from apdepth import ApDepthPipeline
+from diffusers import UNet2DConditionModel
+from src.dataset import BaseDepthDataset, DatasetMode, get_dataset
+from src.dataset.mixed_sampler import MixedBatchSampler
+from src.trainer import get_trainer_cls
+from src.util.config_util import (
+    find_value_in_omegaconf,
+    recursive_load_config,
 )
-from src.util.seeding import generate_seed_sequence
-from src.util.build_mlp import build_conv_adapter
-from torchvision.transforms import Normalize
-from external_encoder.dinov2.dinov2 import DINOv2
+from src.util.depth_transform import (
+    DepthNormalizerBase,
+    get_depth_normalizer,
+)
+from src.util.logging_util import (
+    config_logging,
+    init_wandb,
+    load_wandb_job_id,
+    log_slurm_job_id,
+    save_wandb_job_id,
+    tb_logger,
+)
+from src.util.slurm_util import get_local_scratch_dir, is_on_slurm
 
-IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
-IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
+if "__main__" == __name__:
+    t_start = datetime.now()
+    print(f"start at {t_start}")
 
-class ApDepthTrainerS1:
-    def __init__(
-        self,
-        cfg: OmegaConf,
-        model: ApDepthPipeline,
-        train_dataloader: DataLoader,
-        device,
-        base_ckpt_dir,
-        out_dir_ckpt,
-        out_dir_eval,
-        out_dir_vis,
-        accumulation_steps: int,
-        val_dataloaders: List[DataLoader] = None,
-        vis_dataloaders: List[DataLoader] = None,
-    ):
-        self.cfg: OmegaConf = cfg
-        self.model: ApDepthPipeline = model
-        self.device = device
-        self.seed: Union[int, None] = (
-            self.cfg.trainer.init_seed
-        )  # used to generate seed sequence, set to `None` to train w/o seeding
-        self.out_dir_ckpt = out_dir_ckpt
-        self.out_dir_eval = out_dir_eval
-        self.out_dir_vis = out_dir_vis
-        self.train_loader: DataLoader = train_dataloader
-        self.val_loaders: List[DataLoader] = val_dataloaders
-        self.vis_loaders: List[DataLoader] = vis_dataloaders
-        self.accumulation_steps: int = accumulation_steps
-        self.base_ckpt_dir = base_ckpt_dir
+    # -------------------- Arguments --------------------
+    parser = argparse.ArgumentParser(description="Train your cute model!")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="config/apdepth_train_s1.yaml",
+        help="Path to config file.",
+    )
+    parser.add_argument(
+        "--resume_run",
+        action="store",
+        default=None,
+        help="Path of checkpoint to be resumed. If given, will ignore --config, and checkpoint in the config",
+    )
+    parser.add_argument(
+        "--output_dir", type=str, default=None, help="directory to save checkpoints"
+    )
+    parser.add_argument("--no_cuda", action="store_true", help="Do not use cuda.")
+    parser.add_argument(
+        "--exit_after",
+        type=int,
+        default=-1,
+        help="Save checkpoint and exit after X minutes.",
+    )
+    parser.add_argument("--no_wandb", action="store_true", help="run without wandb")
+    parser.add_argument(
+        "--do_not_copy_data",
+        action="store_true",
+        help="On Slurm cluster, do not copy data to local scratch",
+    )
+    parser.add_argument(
+        "--base_data_dir", type=str, default="/root/Dataset", help="directory of training data"
+    )
+    parser.add_argument(
+        "--base_ckpt_dir",
+        type=str,
+        default="/root/ApDepth/pretrained_checkpoint",
+        help="directory of pretrained checkpoint",
+    )
+    parser.add_argument(
+        "--add_datetime_prefix",
+        action="store_true",
+        help="Add datetime to the output folder name",
+    )
 
+    args = parser.parse_args()
+    print("\n=== Arguments Summary ===")
+    max_len = max(len(arg) for arg in vars(args))
+    for arg in vars(args):
+        print(f"{arg.ljust(max_len)} : {getattr(args, arg)}")
+    resume_run = args.resume_run
+    output_dir = args.output_dir
+    base_data_dir = (
+        args.base_data_dir
+        if args.base_data_dir is not None
+        else os.environ["BASE_DATA_DIR"]
+    )
+    base_ckpt_dir = (
+        args.base_ckpt_dir
+        if args.base_ckpt_dir is not None
+        else os.environ["BASE_CKPT_DIR"]
+    )
 
-        # Encode empty text prompt
-        self.model.encode_empty_text()
-        self.empty_text_embed = self.model.empty_text_embed.detach().clone().to(device)
-        self.model.unet.enable_xformers_memory_efficient_attention()
+    # -------------------- Initialization --------------------
+    # Resume previous run
+    if resume_run is not None:
+        print(f"Resume run: {resume_run}")
+        out_dir_run = os.path.dirname(os.path.dirname(resume_run))
+        job_name = os.path.basename(out_dir_run)
+        # Resume config file
+        cfg = OmegaConf.load(os.path.join(out_dir_run, "config.yaml"))
+    else:
+        # Run from start
+        cfg = recursive_load_config(args.config)
 
-        # Initialize DINOv2 encoder
-        self.dinov2_encoder = DINOv2(model_name='vitg')
-        dinov2_encoder_dict = self.dinov2_encoder.state_dict()
-        dinov2_ckpt_path = self._resolve_ckpt_path(
-            self.cfg.trainer.get(
-                "dinov2_pretrained_path",
-                "DA2/checkpoints/depth_anything_v2_vitg.pth",
-            )
+        # Output dir
+        if output_dir is not None:
+            out_dir_run = output_dir
+            job_name = os.path.basename(args.config)
+        else:
+            job_name = os.path.basename(args.config).split(".")[0]
+            out_dir_run = os.path.join("./output", job_name)
+        os.makedirs(out_dir_run, exist_ok=False)
+
+    cfg_data = cfg.dataset
+
+    # Other directories
+    out_dir_ckpt = os.path.join(out_dir_run, "checkpoint")
+    if not os.path.exists(out_dir_ckpt):
+        os.makedirs(out_dir_ckpt)
+    out_dir_tb = os.path.join(out_dir_run, "tensorboard")
+    if not os.path.exists(out_dir_tb):
+        os.makedirs(out_dir_tb)
+    out_dir_eval = os.path.join(out_dir_run, "evaluation")
+    if not os.path.exists(out_dir_eval):
+        os.makedirs(out_dir_eval)
+    out_dir_vis = os.path.join(out_dir_run, "visualization")
+    if not os.path.exists(out_dir_vis):
+        os.makedirs(out_dir_vis)
+
+    # -------------------- Logging settings --------------------
+    config_logging(cfg.logging, out_dir=out_dir_run)
+    logging.debug(f"config: {cfg}")
+
+    # Initialize wandb
+    # if not args.no_wandb:
+    #     if resume_run is not None:
+    #         wandb_id = load_wandb_job_id(out_dir_run)
+    #         wandb_cfg_dic = {
+    #             "id": wandb_id,
+    #             "resume": "must",
+    #             **cfg.wandb,
+    #         }
+    #     else:
+    #         wandb_cfg_dic = {
+    #             "config": dict(cfg),
+    #             "name": job_name,
+    #             "mode": "online",
+    #             **cfg.wandb,
+    #         }
+    #     wandb_cfg_dic.update({"dir": out_dir_run})
+    #     wandb_run = init_wandb(enable=True, **wandb_cfg_dic)
+    #     save_wandb_job_id(wandb_run, out_dir_run)
+    # else:
+    #     init_wandb(enable=False)
+
+    # Tensorboard (should be initialized after wandb)
+    tb_logger.set_dir(out_dir_tb)
+
+    log_slurm_job_id(step=0)
+
+    # -------------------- Device --------------------
+    cuda_avail = torch.cuda.is_available() and not args.no_cuda
+    device = torch.device("cuda" if cuda_avail else "cpu")
+    logging.info(f"device = {device}")
+
+    # -------------------- Snapshot of code and config --------------------
+    if resume_run is None:
+        _output_path = os.path.join(out_dir_run, "config.yaml")
+        with open(_output_path, "w+") as f:
+            OmegaConf.save(config=cfg, f=f)
+        logging.info(f"Config saved to {_output_path}")
+        # Copy and tar code on the first run
+        _temp_code_dir = os.path.join(out_dir_run, "code_tar")
+        _code_snapshot_path = os.path.join(out_dir_run, "code_snapshot.tar")
+        os.system(
+            f"rsync --relative -arhvz --quiet --filter=':- .gitignore' --exclude '.git' . '{_temp_code_dir}'"
         )
-        pretrained_ckpt_dict = torch.load(dinov2_ckpt_path, map_location='cpu')
-        pretrained_dict = {k.replace('pretrained.', ''): v for k, v in pretrained_ckpt_dict.items() if k.replace('pretrained.', '') in dinov2_encoder_dict}
-        self.dinov2_encoder.load_state_dict(pretrained_dict)
-        del self.dinov2_encoder.head
-        self.dinov2_encoder.head = torch.nn.Identity()
-        self.dinov2_encoder.eval()
+        os.system(f"tar -cf {_code_snapshot_path} {_temp_code_dir}")
+        os.system(f"rm -rf {_temp_code_dir}")
+        logging.info(f"Code snapshot saved to: {_code_snapshot_path}")
 
+    # -------------------- Copy data to local scratch (Slurm) --------------------
+    if is_on_slurm() and (not args.do_not_copy_data):
+        # local scratch dir
+        original_data_dir = base_data_dir
+        base_data_dir = os.path.join(get_local_scratch_dir(), "ApDepth_data")
+        # copy data
+        required_data_list = find_value_in_omegaconf("dir", cfg_data)
+        required_data_list = list(set(required_data_list))
+        logging.info(f"Required_data_list: {required_data_list}")
+        for d in tqdm(required_data_list, desc="Copy data to local scratch"):
+            ori_dir = os.path.join(original_data_dir, d)
+            dst_dir = os.path.join(base_data_dir, d)
+            os.makedirs(os.path.dirname(dst_dir), exist_ok=True)
+            if os.path.isfile(ori_dir):
+                shutil.copyfile(ori_dir, dst_dir)
+            elif os.path.isdir(ori_dir):
+                shutil.copytree(ori_dir, dst_dir)
+        logging.info(f"Data copied to: {base_data_dir}")
 
-        # Initialize adapter to align the feat dimension of SD and DINOv2
-        self.dinov2_adapter = build_conv_adapter(in_channels=1280, out_channels=1536, hidden_channels=1536)
+    # -------------------- Gradient accumulation steps --------------------
+    eff_bs = cfg.dataloader.effective_batch_size
+    accumulation_steps = eff_bs / cfg.dataloader.max_train_batch_size
+    assert int(accumulation_steps) == accumulation_steps
+    accumulation_steps = int(accumulation_steps)
 
+    logging.info(
+        f"Effective batch size: {eff_bs}, accumulation steps: {accumulation_steps}"
+    )
 
-        # Trainability
-        self.dinov2_adapter.requires_grad_(True)
-        self.dinov2_encoder.requires_grad_(False)
-        self.model.vae.requires_grad_(False)
-        self.model.text_encoder.requires_grad_(False)
-        self.model.unet.requires_grad_(True)
+    # -------------------- Data --------------------
+    loader_seed = cfg.dataloader.seed
+    if loader_seed is None:
+        loader_generator = None
+    else:
+        loader_generator = torch.Generator().manual_seed(loader_seed)
 
-
-        # Optimizer !should be defined after input layer is adapted
-        lr = self.cfg.lr
-        self.optimizer = Adam([
-            {'params': self.model.unet.parameters(), 'lr': lr},
-            {'params': self.dinov2_adapter.parameters(), 'lr': lr}
-        ])
-
-        # LR scheduler
-        lr_func = IterExponential(
-            total_iter_length=self.cfg.lr_scheduler.kwargs.total_iter,
-            final_ratio=self.cfg.lr_scheduler.kwargs.final_ratio,
-            warmup_steps=self.cfg.lr_scheduler.kwargs.warmup_steps,
+    # Training dataset
+    depth_transform: DepthNormalizerBase = get_depth_normalizer(
+        cfg_normalizer=cfg.depth_normalization
+    )
+    train_dataset: BaseDepthDataset = get_dataset(
+        cfg_data.train,
+        base_data_dir=base_data_dir,
+        mode=DatasetMode.TRAIN,
+        augmentation_args=cfg.augmentation,
+        depth_transform=depth_transform,
+    )
+    logging.debug("Augmentation: ", cfg.augmentation)
+    if "mixed" == cfg_data.train.name:
+        dataset_ls = train_dataset
+        assert len(cfg_data.train.prob_ls) == len(
+            dataset_ls
+        ), "Lengths don't match: `prob_ls` and `dataset_list`"
+        concat_dataset = ConcatDataset(dataset_ls)
+        mixed_sampler = MixedBatchSampler(
+            src_dataset_ls=dataset_ls,
+            batch_size=cfg.dataloader.max_train_batch_size,
+            drop_last=True,
+            prob=cfg_data.train.prob_ls,
+            shuffle=True,
+            generator=loader_generator,
         )
-        self.lr_scheduler = LambdaLR(optimizer=self.optimizer, lr_lambda=lr_func)
-
-        # Loss
-        self.loss = get_loss(loss_name=self.cfg.loss.name, **self.cfg.loss.kwargs)
-
-        # Eval metrics
-        self.metric_funcs = [getattr(metric, _met) for _met in cfg.eval.eval_metrics]
-        self.train_metrics = MetricTracker(*["loss", "feat_align_loss"])
-        self.val_metrics = MetricTracker(*[m.__name__ for m in self.metric_funcs])
-        # main metric for best checkpoint saving
-        self.main_val_metric = cfg.validation.main_val_metric
-        self.main_val_metric_goal = cfg.validation.main_val_metric_goal
-        assert (
-            self.main_val_metric in cfg.eval.eval_metrics
-        ), f"Main eval metric `{self.main_val_metric}` not found in evaluation metrics."
-        self.best_metric = 1e8 if "minimize" == self.main_val_metric_goal else -1e8
-
-        if 8 != self.model.unet.config["in_channels"]:
-            self._replace_unet_conv_in()
-
-        # Settings
-        self.max_epoch = self.cfg.max_epoch
-        self.max_iter = self.cfg.max_iter
-        self.gradient_accumulation_steps = accumulation_steps
-        self.gt_depth_type = self.cfg.gt_depth_type
-        self.gt_mask_type = self.cfg.gt_mask_type
-        self.save_period = self.cfg.trainer.save_period
-        self.backup_period = self.cfg.trainer.backup_period
-        self.val_period = self.cfg.trainer.validation_period
-        self.vis_period = self.cfg.trainer.visualization_period
-
-        # Internal variables
-        self.epoch = 1
-        self.n_batch_in_epoch = 0  # batch index in the epoch, used when resume training
-        self.effective_iter = 0  # how many times optimizer.step() is called
-        self.in_evaluation = False
-        self.global_seed_sequence: List = []  # consistent global seed sequence, used to seed random generator, to ensure consistency when resuming
-
-    def _replace_unet_conv_in(self):
-            # replace the first layer to accept 8 in_channels
-            _weight = self.model.unet.conv_in.weight.clone()  # [320, 4, 3, 3]
-            _bias = self.model.unet.conv_in.bias.clone()  # [320]
-            _weight = _weight.repeat((1, 2, 1, 1))  # Keep selected channel(s)
-            # half the activation magnitude
-            _weight *= 0.5
-            # new conv_in channel
-            _n_convin_out_channel = self.model.unet.conv_in.out_channels
-            _new_conv_in = Conv2d(
-                8, _n_convin_out_channel, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)
-            )
-            _new_conv_in.weight = Parameter(_weight)
-            _new_conv_in.bias = Parameter(_bias)
-            self.model.unet.conv_in = _new_conv_in
-            logging.info("Unet conv_in layer is replaced")
-            # replace config
-            self.model.unet.config["in_channels"] = 8
-            logging.info("Unet config is updated")
-            return
-    
-    def train(self, t_end=None):
-        logging.info("Start training")
-
-        device = self.device
-        self.model.to(device)
-        if getattr(self.model, "da2", None) is not None:
-            self.model.da2.to(device)
-        self.dinov2_encoder.to(device)
-        self.dinov2_adapter.to(device)
-        # self.visualize()
-
-        # if self.in_evaluation:
-        #     logging.info(
-        #         "Last evaluation was not finished, will do evaluation before continue training."
-        #     )
-        #     self.validate()
-
-        self.train_metrics.reset()
-        accumulated_step = 0
-
-        progress_bar = tqdm(
-            range(0, self.max_iter),
-            initial=self.effective_iter,
-            desc="iter"
+        train_loader = DataLoader(
+            concat_dataset,
+            batch_sampler=mixed_sampler,
+            num_workers=cfg.dataloader.num_workers,
+        )
+    else:
+        train_loader = DataLoader(
+            dataset=train_dataset,
+            batch_size=cfg.dataloader.max_train_batch_size,
+            num_workers=cfg.dataloader.num_workers,
+            shuffle=True,
+            generator=loader_generator,
         )
 
-        for epoch in range(self.epoch, self.max_epoch + 1):
-            self.epoch = epoch
-            logging.debug(f"epoch: {self.epoch}")
+    # -------------------- Model --------------------
+    _pipeline_kwargs = cfg.pipeline.kwargs if cfg.pipeline.kwargs is not None else {}
+    model = ApDepthPipeline.from_pretrained(
+        os.path.join(base_ckpt_dir, cfg.model.pretrained_path), **_pipeline_kwargs
+    )
+    unet = UNet2DConditionModel.from_pretrained(
+        os.path.join(base_ckpt_dir, cfg.model.pretrained_path, "unet")
+    )
+    model.unet = unet
 
-            # Skip previous batches when resume
-            for batch in skip_first_batches(self.train_loader, self.n_batch_in_epoch):
-                self.model.unet.train()
-                self.dinov2_adapter.train()
+    # -------------------- Trainer --------------------
+    # Exit time
+    if args.exit_after > 0:
+        t_end = t_start + timedelta(minutes=args.exit_after)
+        logging.info(f"Will exit at {t_end}")
+    else:
+        t_end = None
 
-                # >>> With gradient accumulation >>>
+    trainer_cls = get_trainer_cls(cfg.trainer.name)
+    logging.debug(f"Trainer: {trainer_cls}")
+    trainer = trainer_cls(
+        cfg=cfg,
+        model=model,
+        train_dataloader=train_loader,
+        device=device,
+        base_ckpt_dir=base_ckpt_dir,
+        out_dir_ckpt=out_dir_ckpt,
+        out_dir_eval=out_dir_eval,
+        out_dir_vis=out_dir_vis,
+        accumulation_steps=accumulation_steps,
+    )
 
-                # Get data
-                rgb = batch["rgb_norm"].to(device)
-                depth_gt_for_latent = batch[self.gt_depth_type].to(device)
-                da2_depth = self.model.da2.infer_batch(rgb).to(device)
-
-                if self.gt_mask_type is not None:
-                    valid_mask_for_latent = batch[self.gt_mask_type].to(device)
-                    invalid_mask = ~valid_mask_for_latent
-                    valid_mask_down = ~torch.max_pool2d(
-                        invalid_mask.float(), 8, 8
-                    ).bool()
-                    valid_mask_down = valid_mask_down.repeat((1, 4, 1, 1))
-                else:
-                    raise NotImplementedError
-
-                batch_size = rgb.shape[0]
-
-                with torch.no_grad():
-                    # Encode image
-                    rgb_latent = self.model.encode_rgb(rgb)  # [B, 4, h, w]
-                    # Encode GT depth
-                    gt_depth_latent = self.encode_depth(
-                        depth_gt_for_latent
-                    )  # [B, 4, h, w]
-                    da2_depth_latent = self.model.encode_rgb(da2_depth)
-                    # DINOv2 feat
-                    dinov2_input_rgb = Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)(rgb)
-                    dinov2_input_rgb = F.interpolate(dinov2_input_rgb, scale_factor=0.875, mode='bicubic')
-                    dinov2_z = self.dinov2_encoder.forward_features(dinov2_input_rgb)['x_norm_patchtokens']
-
-                # Text embedding
-                text_embed = self.empty_text_embed.to(device).repeat(
-                    (batch_size, 1, 1)
-                )  # [B, 77, 1024]
-
-                unet_input = torch.cat(
-                    [rgb_latent, da2_depth_latent], dim=1
-                )
-
-                # Predict the noise residual
-                rgb_latent = self.model.unet(
-                    unet_input, 1, text_embed
-                )  # [B, 4, h, w]
-
-                feat_16 = rgb_latent.feat_64
-                rgb_latent = rgb_latent.sample
-
-                if self.gt_mask_type is not None:
-                    loss = self.loss(
-                        rgb_latent[valid_mask_down].float(),
-                        gt_depth_latent[valid_mask_down].float(),
-                    ).mean()
-                else:
-                    loss = self.loss(rgb_latent.float(), gt_depth_latent.float()).mean()
-
-                self.train_metrics.update("loss", loss.item())
-
-                # feat align loss
-                b, c, h, w = feat_16.shape
-                _, _, H_latent, W_latent = rgb_latent.shape
-                # update dinov2_adapter
-                unet_feat_aligned = self.dinov2_adapter(feat_16)
-
-                if torch.isnan(unet_feat_aligned).any():
-                    logging.warning("unet_feat_aligned contains NaN.")
-
-                dinov2_spatial_dim_h = int(H_latent / 2)
-                dinov2_spatial_dim_w = int(W_latent / 2)
-
-                # [B, N, C] -> [B, H', W', C] -> [B, C, H', W']
-                dinov2_z = dinov2_z.reshape(b, dinov2_spatial_dim_h, dinov2_spatial_dim_w, -1).permute(0, 3, 1, 2)
-                dinov2_z = F.interpolate(dinov2_z, size=(h, w), mode='bicubic', align_corners=False)
-
-                # (L2 Normalize)
-                unet_feat_norm = F.normalize(unet_feat_aligned, dim=1, p=2)
-                dinov2_feat_norm = F.normalize(dinov2_z.detach(), dim=1, p=2) # Detach DINOv2
-
-                # cosine_similarity
-                # 最大化相似度，所以 Loss = 1 - Cosine
-                loss_feat_align = (1.0 - F.cosine_similarity(unet_feat_norm, dinov2_feat_norm, dim=1)).mean()
-
-                self.train_metrics.update("feat_align_loss", loss_feat_align.item())
-
-                loss += self.cfg.loss_feat_align.lamda * loss_feat_align
-
-                loss = loss / self.gradient_accumulation_steps
-                loss.backward()
-                accumulated_step += 1
-
-                self.n_batch_in_epoch += 1
-                # Practical batch end
-
-                # Perform optimization step
-                if accumulated_step >= self.gradient_accumulation_steps:
-                    self.optimizer.step()
-                    self.lr_scheduler.step()
-                    self.optimizer.zero_grad()
-                    accumulated_step = 0
-
-                    self.effective_iter += 1
-                    progress_bar.update(1)
-
-                    # Log to tensorboard
-                    accumulated_loss = self.train_metrics.result()["loss"]
-                    logs = {"loss": accumulated_loss}
-                    progress_bar.set_postfix(**logs)
-                    tb_logger.log_dic(
-                        {
-                            f"train/{k}": v
-                            for k, v in self.train_metrics.result().items()
-                        },
-                        global_step=self.effective_iter,
-                    )
-                    tb_logger.writer.add_scalar(
-                        "lr",
-                        self.lr_scheduler.get_last_lr()[0],
-                        global_step=self.effective_iter,
-                    )
-                    tb_logger.writer.add_scalar(
-                        "n_batch_in_epoch",
-                        self.n_batch_in_epoch,
-                        global_step=self.effective_iter,
-                    )
-                    self.train_metrics.reset()
-
-                    # Per-step callback
-                    self._train_step_callback()
-
-                    # End of training
-                    if self.max_iter > 0 and self.effective_iter >= self.max_iter:
-                        self.save_checkpoint(
-                            ckpt_name=self._get_backup_ckpt_name(),
-                            save_train_state=False,
-                        )
-                        logging.info("Training ended.")
-                        return
-                    # Time's up
-                    elif t_end is not None and datetime.now() >= t_end:
-                        self.save_checkpoint(ckpt_name="latest", save_train_state=True)
-                        logging.info("Time is up, training paused.")
-                        return
-
-                    torch.cuda.empty_cache()
-                    # <<< Effective batch end <<<
-
-            # Epoch end
-            self.n_batch_in_epoch = 0
-
-    def encode_depth(self, depth_in):
-        # stack depth into 3-channel
-        stacked = self.stack_depth_images(depth_in)
-        # encode using VAE encoder
-        depth_latent = self.model.encode_rgb(stacked)
-        return depth_latent
-
-    @staticmethod
-    def stack_depth_images(depth_in):
-        if 4 == len(depth_in.shape):
-            stacked = depth_in.repeat(1, 3, 1, 1)
-        elif 3 == len(depth_in.shape):
-            stacked = depth_in.unsqueeze(1)
-            stacked = depth_in.repeat(1, 3, 1, 1)
-        return stacked
-
-    def _train_step_callback(self):
-        """Executed after every iteration"""
-        # Save backup (with a larger interval, without training states)
-        if self.backup_period > 0 and 0 == self.effective_iter % self.backup_period:
-            self.save_checkpoint(
-                ckpt_name=self._get_backup_ckpt_name(), save_train_state=False
-            )
-
-        _is_latest_saved = False
-        # Validation
-        if self.val_period > 0 and 0 == self.effective_iter % self.val_period:
-            self.in_evaluation = True  # flag to do evaluation in resume run if validation is not finished
-            self.save_checkpoint(ckpt_name="latest", save_train_state=True)
-            _is_latest_saved = True
-            self.validate()
-            self.in_evaluation = False
-            self.save_checkpoint(ckpt_name="latest", save_train_state=True)
-
-        # Save training checkpoint (can be resumed)
-        if (
-            self.save_period > 0
-            and 0 == self.effective_iter % self.save_period
-            and not _is_latest_saved
-        ):
-            self.save_checkpoint(ckpt_name="latest", save_train_state=True)
-
-        # Visualization
-        if self.vis_period > 0 and 0 == self.effective_iter % self.vis_period:
-            self.visualize()
-    
-    def validate(self):
-        for i, val_loader in enumerate(self.val_loaders):
-            val_dataset_name = val_loader.dataset.disp_name
-            val_metric_dic = self.validate_single_dataset(
-                data_loader=val_loader, metric_tracker=self.val_metrics
-            )
-            logging.info(
-                f"Iter {self.effective_iter}. Validation metrics on `{val_dataset_name}`: {val_metric_dic}"
-            )
-            tb_logger.log_dic(
-                {f"val/{val_dataset_name}/{k}": v for k, v in val_metric_dic.items()},
-                global_step=self.effective_iter,
-            )
-            # save to file
-            eval_text = eval_dic_to_text(
-                val_metrics=val_metric_dic,
-                dataset_name=val_dataset_name,
-                sample_list_path=val_loader.dataset.filename_ls_path,
-            )
-            _save_to = os.path.join(
-                self.out_dir_eval,
-                f"eval-{val_dataset_name}-iter{self.effective_iter:06d}.txt",
-            )
-            with open(_save_to, "w+") as f:
-                f.write(eval_text)
-
-            # Update main eval metric
-            if 0 == i:
-                main_eval_metric = val_metric_dic[self.main_val_metric]
-                if (
-                    "minimize" == self.main_val_metric_goal
-                    and main_eval_metric < self.best_metric
-                    or "maximize" == self.main_val_metric_goal
-                    and main_eval_metric > self.best_metric
-                ):
-                    self.best_metric = main_eval_metric
-                    logging.info(
-                        f"Best metric: {self.main_val_metric} = {self.best_metric} at iteration {self.effective_iter}"
-                    )
-                    # Save a checkpoint
-                    self.save_checkpoint(
-                        ckpt_name=self._get_backup_ckpt_name(), save_train_state=False
-                    )
-    
-    def visualize(self):
-        for val_loader in self.vis_loaders:
-            vis_dataset_name = val_loader.dataset.disp_name
-            vis_out_dir = os.path.join(
-                self.out_dir_vis, self._get_backup_ckpt_name(), vis_dataset_name
-            )
-            os.makedirs(vis_out_dir, exist_ok=True)
-            _ = self.validate_single_dataset(
-                data_loader=val_loader,
-                metric_tracker=self.val_metrics,
-                save_to_dir=vis_out_dir,
-            )
-
-    @torch.no_grad()
-    def validate_single_dataset(
-        self,
-        data_loader: DataLoader,
-        metric_tracker: MetricTracker,
-        save_to_dir: str = None,
-    ):
-        self.model.to(self.device)
-        metric_tracker.reset()
-
-        # Generate seed sequence for consistent evaluation
-        val_init_seed = self.cfg.validation.init_seed
-        val_seed_ls = generate_seed_sequence(val_init_seed, len(data_loader))
-
-        for i, batch in enumerate(
-            tqdm(data_loader, desc=f"evaluating on {data_loader.dataset.disp_name}"),
-            start=1,
-        ):
-            assert 1 == data_loader.batch_size
-            # Read input image
-            rgb_int = batch["rgb_int"]  # [3, H, W]
-            # GT depth
-            depth_raw_ts = batch["depth_raw_linear"].squeeze()
-            depth_raw = depth_raw_ts.numpy()
-            depth_raw_ts = depth_raw_ts.to(self.device)
-            valid_mask_ts = batch["valid_mask_raw"].squeeze()
-            valid_mask = valid_mask_ts.numpy()
-            valid_mask_ts = valid_mask_ts.to(self.device)
-
-            # Predict depth
-            pipe_out: ApDepthDepthOutput = self.model(
-                rgb_int,
-                processing_res=self.cfg.validation.processing_res,
-                match_input_res=self.cfg.validation.match_input_res,
-                batch_size=1,  # use batch size 1 to increase reproducibility
-                color_map=None,
-                show_progress_bar=False,
-                resample_method=self.cfg.validation.resample_method,
-            )
-
-            depth_pred: np.ndarray = pipe_out.depth_np.squeeze()
-
-            if "least_square" == self.cfg.eval.alignment:
-                depth_pred, scale, shift = align_depth_least_square(
-                    gt_arr=depth_raw,
-                    pred_arr=depth_pred,
-                    valid_mask_arr=valid_mask,
-                    return_scale_shift=True,
-                    max_resolution=self.cfg.eval.align_max_res,
-                )
-            elif  "least_square_disparity" == self.cfg.eval.alignment:
-                gt_disparity = depth_raw
-                gt_non_neg_mask = gt_disparity > 0
-
-                # LS alignment in disparity space
-                pred_non_neg_mask = depth_pred > 0
-                valid_nonnegative_mask = valid_mask & gt_non_neg_mask & pred_non_neg_mask
-
-                disparity_pred, scale, shift = align_depth_least_square(
-                    gt_arr=gt_disparity,
-                    pred_arr=depth_pred,
-                    valid_mask_arr=valid_nonnegative_mask,
-                    return_scale_shift=True,
-                )
-                # convert to depth
-                disparity_pred = np.clip(
-                    disparity_pred, a_min=1e-3, a_max=None
-                )  # avoid 0 disparity
-                depth_pred = disparity2depth(disparity_pred)
-                depth_raw_ts = disparity2depth(depth_raw_ts)
-            elif "least_square_sqrt_disp" == self.cfg.eval.alignment:
-                gt_sqrt_disp = depth_raw
-                gt_non_neg_mask = gt_sqrt_disp > 0
-
-                # LS alignment in sqrt space
-                pred_non_neg_mask = depth_pred > 0
-                valid_nonnegative_mask = valid_mask & gt_non_neg_mask & pred_non_neg_mask
-                depth_sqrt_disp_pred, scale, shift = align_depth_least_square(
-                    gt_arr=gt_sqrt_disp,
-                    pred_arr=depth_pred,
-                    valid_mask_arr=valid_mask,
-                    return_scale_shift=True,
-                )
-                # convert to depth
-                disparity_pred = depth_sqrt_disp_pred ** 2
-                depth_raw_ts = torch.pow(depth_raw_ts, 2)
-                # convert to depth
-                disparity_pred = np.clip(
-                    disparity_pred, a_min=1e-3, a_max=None
-                )  # avoid 0 disparity
-                depth_pred = disparity2depth(disparity_pred)
-                depth_raw_ts = disparity2depth(depth_raw_ts)
-            else:
-                raise RuntimeError(f"Unknown alignment type: {self.cfg.eval.alignment}")
-
-            # Clip to dataset min max
-            depth_pred = np.clip(
-                depth_pred,
-                a_min=data_loader.dataset.min_depth,
-                a_max=data_loader.dataset.max_depth,
-            )
-
-            # clip to d > 0 for evaluation
-            depth_pred = np.clip(depth_pred, a_min=1e-6, a_max=None)
-
-            # Evaluate
-            sample_metric = []
-            depth_pred_ts = torch.from_numpy(depth_pred).to(self.device)
-
-            for met_func in self.metric_funcs:
-                _metric_name = met_func.__name__
-                _metric = met_func(depth_pred_ts, depth_raw_ts, valid_mask_ts).item()
-                sample_metric.append(_metric.__str__())
-                metric_tracker.update(_metric_name, _metric)
-
-            # Save as 16-bit uint png
-            if save_to_dir is not None:
-                img_name = batch["rgb_relative_path"][0].replace("/", "_")
-                png_save_path = os.path.join(save_to_dir, f"{img_name}.png")
-                depth_to_save = (pipe_out.depth_np.squeeze() * 65535.0).astype(np.uint16)
-                Image.fromarray(depth_to_save).save(png_save_path, mode="I;16")
-
-        return metric_tracker.result()
-
-    def _get_next_seed(self):
-        if 0 == len(self.global_seed_sequence):
-            self.global_seed_sequence = generate_seed_sequence(
-                initial_seed=self.seed,
-                length=self.max_iter * self.gradient_accumulation_steps,
-            )
-            logging.info(
-                f"Global seed sequence is generated, length={len(self.global_seed_sequence)}"
-            )
-        return self.global_seed_sequence.pop()
-
-    def _resolve_ckpt_path(self, path):
-        candidates = [path]
-        if not os.path.isabs(path):
-            candidates.append(os.path.join(self.base_ckpt_dir, path))
-
-        for candidate in candidates:
-            if os.path.exists(candidate):
-                return candidate
-
-        checked = ", ".join(candidates)
-        raise FileNotFoundError(f"Checkpoint not found. Checked: {checked}")
-
-    def save_checkpoint(self, ckpt_name, save_train_state):
-        ckpt_dir = os.path.join(self.out_dir_ckpt, ckpt_name)
-        logging.info(f"Saving checkpoint to: {ckpt_dir}")
-        # Backup previous checkpoint
-        temp_ckpt_dir = None
-        if os.path.exists(ckpt_dir) and os.path.isdir(ckpt_dir):
-            temp_ckpt_dir = os.path.join(
-                os.path.dirname(ckpt_dir), f"_old_{os.path.basename(ckpt_dir)}"
-            )
-            if os.path.exists(temp_ckpt_dir):
-                shutil.rmtree(temp_ckpt_dir, ignore_errors=True)
-            os.rename(ckpt_dir, temp_ckpt_dir)
-            logging.debug(f"Old checkpoint is backed up at: {temp_ckpt_dir}")
-
-        # Save UNet
-        unet_path = os.path.join(ckpt_dir, "unet")
-        self.model.unet.save_pretrained(unet_path, safe_serialization=False)
-        logging.info(f"UNet is saved to: {unet_path}")
-
-        # Save DINOv2_Adapter
-        adapter_path = os.path.join(ckpt_dir, "dinov2_adapter.pth")
-        state_dict = self.dinov2_adapter.state_dict()
-        torch.save(state_dict, adapter_path)
-        logging.info(f"dinov2_adapter is saved to: {adapter_path}")
-
-        if save_train_state:
-            state = {
-                "optimizer": self.optimizer.state_dict(),
-                "lr_scheduler": self.lr_scheduler.state_dict(),
-                "config": self.cfg,
-                "effective_iter": self.effective_iter,
-                "epoch": self.epoch,
-                "n_batch_in_epoch": self.n_batch_in_epoch,
-                "best_metric": self.best_metric,
-                "in_evaluation": self.in_evaluation,
-                "global_seed_sequence": self.global_seed_sequence,
-            }
-            train_state_path = os.path.join(ckpt_dir, "trainer.ckpt")
-            torch.save(state, train_state_path)
-            # iteration indicator
-            f = open(os.path.join(ckpt_dir, self._get_backup_ckpt_name()), "w")
-            f.close()
-
-            logging.info(f"Trainer state is saved to: {train_state_path}")
-
-        # Remove temp ckpt
-        if temp_ckpt_dir is not None and os.path.exists(temp_ckpt_dir):
-            shutil.rmtree(temp_ckpt_dir, ignore_errors=True)
-            logging.debug("Old checkpoint backup is removed.")
-
-    def load_checkpoint(
-        self, ckpt_path, load_trainer_state=True, resume_lr_scheduler=True
-    ):
-        logging.info(f"Loading checkpoint from: {ckpt_path}")
-        # Load UNet
-        _model_path = os.path.join(ckpt_path, "unet", "diffusion_pytorch_model.bin")
-        self.model.unet.load_state_dict(
-            torch.load(_model_path, map_location=self.device)
+    # -------------------- Checkpoint --------------------
+    if resume_run is not None:
+        trainer.load_checkpoint(
+            resume_run, load_trainer_state=True, resume_lr_scheduler=True
         )
-        self.model.unet.to(self.device)
-        logging.info(f"UNet parameters are loaded from {_model_path}")
 
-        # Load DINOv2_adapter
-        _model_path = os.path.join(ckpt_path, "dinov2_adapter.pth")
-        self.dinov2_adapter.load_state_dict(
-            torch.load(_model_path, map_location=self.device)
-        )
-        self.dinov2_adapter.to(self.device)
-        logging.info(f"dinov2_adapter parameters are loaded from {_model_path}")
-
-        # Load training states
-        if load_trainer_state:
-            checkpoint = torch.load(os.path.join(ckpt_path, "trainer.ckpt"))
-            self.effective_iter = checkpoint["effective_iter"]
-            self.epoch = checkpoint["epoch"]
-            self.n_batch_in_epoch = checkpoint["n_batch_in_epoch"]
-            self.in_evaluation = checkpoint["in_evaluation"]
-            self.global_seed_sequence = checkpoint["global_seed_sequence"]
-
-            self.best_metric = checkpoint["best_metric"]
-
-            self.optimizer.load_state_dict(checkpoint["optimizer"])
-            logging.info(f"optimizer state is loaded from {ckpt_path}")
-
-            if resume_lr_scheduler:
-                self.lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
-                logging.info(f"LR scheduler state is loaded from {ckpt_path}")
-
-        logging.info(
-            f"Checkpoint loaded from: {ckpt_path}. Resume from iteration {self.effective_iter} (epoch {self.epoch})"
-        )
-        return
-
-    def _get_backup_ckpt_name(self):
-        return f"iter_{self.effective_iter:06d}"
+    # -------------------- Training & Evaluation Loop --------------------
+    try:
+        trainer.train(t_end=t_end)
+    except Exception as e:
+        logging.exception(e)
