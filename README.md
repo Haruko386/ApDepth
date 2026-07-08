@@ -287,9 +287,9 @@ Please cite our paper:
 
 <a href="https://www.star-history.com/?repos=Haruko386%2FApDepth&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Haruko386/ApDepth&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Haruko386/ApDepth&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Haruko386/ApDepth&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Haruko386/ApDepth&type=date&theme=dark&legend=top-left&sealed_token=RIzxWAtkKvGlnL15BidV43xa1IN08obj9jiTd-zlcxc0lOSIsfGlSnlb9-_Wq_mDD3ZOBj9e88ok1I8552ySk1jaTvWsMDq43LoImZkxugJ-RzfC96rlUg" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Haruko386/ApDepth&type=date&legend=top-left&sealed_token=RIzxWAtkKvGlnL15BidV43xa1IN08obj9jiTd-zlcxc0lOSIsfGlSnlb9-_Wq_mDD3ZOBj9e88ok1I8552ySk1jaTvWsMDq43LoImZkxugJ-RzfC96rlUg" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Haruko386/ApDepth&type=date&legend=top-left&sealed_token=RIzxWAtkKvGlnL15BidV43xa1IN08obj9jiTd-zlcxc0lOSIsfGlSnlb9-_Wq_mDD3ZOBj9e88ok1I8552ySk1jaTvWsMDq43LoImZkxugJ-RzfC96rlUg" />
  </picture>
 </a>
 
