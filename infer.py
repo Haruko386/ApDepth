@@ -81,7 +81,13 @@ def get_pending_indices(dataset, output_dir):
 
 
 def save_prediction_atomic(save_to, depth_pred):
-    """Save without exposing a partially written final NPY file."""
+    """
+    Save a depth prediction to the destination without exposing a partially written file.
+    
+    Parameters:
+    	save_to: Final path for the prediction file.
+    	depth_pred: Prediction array to save.
+    """
     temporary_path = f"{save_to}.tmp"
     with open(temporary_path, "wb") as temporary_file:
         np.save(temporary_file, depth_pred)
@@ -204,6 +210,12 @@ if "__main__" == __name__:
     seed_all(seed)
 
     def check_directory(directory):
+        """
+        Prompt for confirmation before continuing when the specified directory already exists.
+        
+        Parameters:
+            directory (str): Path to the directory whose existence requires confirmation.
+        """
         if os.path.exists(directory):
             response = (
                 input(
