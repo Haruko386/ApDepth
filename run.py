@@ -176,9 +176,14 @@ if "__main__" == __name__:
     logging.info(f"device = {device}")
 
     # -------------------- Data --------------------
-    rgb_filename_list = glob(os.path.join(input_rgb_dir, "*"))
+    rgb_filename_list = glob(
+        os.path.join(input_rgb_dir, "**", "*"), recursive=True
+    )
     rgb_filename_list = [
-        f for f in rgb_filename_list if os.path.splitext(f)[1].lower() in EXTENSION_LIST
+        f
+        for f in rgb_filename_list
+        if os.path.isfile(f)
+        and os.path.splitext(f)[1].lower() in EXTENSION_LIST
     ]
     rgb_filename_list = sorted(rgb_filename_list)
     n_images = len(rgb_filename_list)
@@ -251,21 +256,41 @@ if "__main__" == __name__:
             # Save as npy
             rgb_name_base = os.path.splitext(os.path.basename(rgb_path))[0]
             pred_name_base = rgb_name_base + "_pred"
-            npy_save_path = os.path.join(output_dir_npy, f"{pred_name_base}.npy")
+            relative_parent_dir = os.path.dirname(
+                os.path.relpath(rgb_path, input_rgb_dir)
+            )
+            image_output_dir_npy = os.path.join(
+                output_dir_npy, relative_parent_dir
+            )
+            image_output_dir_tif = os.path.join(
+                output_dir_tif, relative_parent_dir
+            )
+            image_output_dir_color = os.path.join(
+                output_dir_color, relative_parent_dir
+            )
+            os.makedirs(image_output_dir_npy, exist_ok=True)
+            os.makedirs(image_output_dir_tif, exist_ok=True)
+            os.makedirs(image_output_dir_color, exist_ok=True)
+
+            npy_save_path = os.path.join(
+                image_output_dir_npy, f"{pred_name_base}.npy"
+            )
             if os.path.exists(npy_save_path):
                 logging.warning(f"Existing file: '{npy_save_path}' will be overwritten")
             np.save(npy_save_path, depth_pred)
 
             # Save as 16-bit uint png
             depth_to_save = (depth_pred * 65535.0).astype(np.uint16)
-            png_save_path = os.path.join(output_dir_tif, f"{pred_name_base}.png")
+            png_save_path = os.path.join(
+                image_output_dir_tif, f"{pred_name_base}.png"
+            )
             if os.path.exists(png_save_path):
                 logging.warning(f"Existing file: '{png_save_path}' will be overwritten")
             Image.fromarray(depth_to_save).save(png_save_path, mode="I;16")
 
             # Colorize
             colored_save_path = os.path.join(
-                output_dir_color, f"{pred_name_base}_colored.png"
+                image_output_dir_color, f"{pred_name_base}_colored.png"
             )
             if os.path.exists(colored_save_path):
                 logging.warning(
