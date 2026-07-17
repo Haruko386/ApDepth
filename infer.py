@@ -27,7 +27,7 @@ import numpy as np
 import torch
 from omegaconf import OmegaConf
 from PIL import Image
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from tqdm.auto import tqdm
 
 from apdepth import ApDepthPipeline
@@ -38,6 +38,55 @@ from src.dataset import (
     get_dataset,
     get_pred_name,
 )
+
+
+def get_prediction_path(output_dir, rgb_relative_path, name_mode):
+    """Return the prediction path corresponding to one dataset RGB path."""
+    rgb_basename = os.path.basename(rgb_relative_path)
+    scene_dir = os.path.join(output_dir, os.path.dirname(rgb_relative_path))
+    pred_basename = get_pred_name(rgb_basename, name_mode, suffix=".npy")
+    return os.path.join(scene_dir, pred_basename)
+
+
+def is_valid_prediction(prediction_path):
+    """Check that a prediction exists and is a readable, non-empty NPY file."""
+    if not os.path.isfile(prediction_path):
+        return False
+
+    try:
+        prediction = np.load(prediction_path, mmap_mode="r", allow_pickle=False)
+        is_valid = prediction.size > 0
+        mmap = getattr(prediction, "_mmap", None)
+        if mmap is not None:
+            mmap.close()
+        return is_valid
+    except (EOFError, OSError, ValueError):
+        logging.warning(
+            f"Incomplete or invalid prediction will be recomputed: "
+            f"'{prediction_path}'"
+        )
+        return False
+
+
+def get_pending_indices(dataset, output_dir):
+    """Return unfinished dataset indices while preserving dataset-list order."""
+    pending_indices = []
+    for index, filename_line in enumerate(dataset.filenames):
+        prediction_path = get_prediction_path(
+            output_dir, filename_line[0], dataset.name_mode
+        )
+        if not is_valid_prediction(prediction_path):
+            pending_indices.append(index)
+    return pending_indices
+
+
+def save_prediction_atomic(save_to, depth_pred):
+    """Save without exposing a partially written final NPY file."""
+    temporary_path = f"{save_to}.tmp"
+    with open(temporary_path, "wb") as temporary_file:
+        np.save(temporary_file, depth_pred)
+    os.replace(temporary_path, save_to)
+
 
 if "__main__" == __name__:
     logging.basicConfig(level=logging.INFO)
@@ -69,6 +118,14 @@ if "__main__" == __name__:
 
     parser.add_argument(
         "--output_dir", type=str, required=True, help="Output directory."
+    )
+    parser.add_argument(
+        "--resume_run",
+        action="store_true",
+        help=(
+            "Resume inference from an existing output directory. Valid prediction "
+            "files are skipped and missing or incomplete files are recomputed."
+        ),
     )
 
     # inference setting
@@ -112,6 +169,7 @@ if "__main__" == __name__:
     dataset_config = args.dataset_config
     base_data_dir = args.base_data_dir
     output_dir = args.output_dir
+    resume_run = args.resume_run
 
     ensemble_size = args.ensemble_size
     if ensemble_size > 15:
@@ -163,7 +221,13 @@ if "__main__" == __name__:
                 print("Invalid input. Please enter 'y' (for Yes) or 'n' (for No).")
                 check_directory(directory)  # Recursive call to ask again
 
-    check_directory(output_dir)
+    if resume_run:
+        logging.info(
+            "Resume mode enabled; scanning the output directory for completed "
+            "predictions."
+        )
+    else:
+        check_directory(output_dir)
     os.makedirs(output_dir, exist_ok=True)
     logging.info(f"output dir = {output_dir}")
 
@@ -182,7 +246,29 @@ if "__main__" == __name__:
         cfg_data, base_data_dir=base_data_dir, mode=DatasetMode.RGB_ONLY
     )
 
-    dataloader = DataLoader(dataset, batch_size=1, num_workers=0)
+    inference_dataset = dataset
+    if resume_run:
+        pending_indices = get_pending_indices(dataset, output_dir)
+
+        completed_count = len(dataset) - len(pending_indices)
+        logging.info(
+            f"Resume scan found {completed_count}/{len(dataset)} completed "
+            f"predictions; {len(pending_indices)} remaining."
+        )
+
+        if not pending_indices:
+            logging.info("All predictions are complete. Nothing to infer.")
+            exit(0)
+
+        first_pending_index = pending_indices[0]
+        first_pending_rgb = dataset.filenames[first_pending_index][0]
+        logging.info(
+            f"First pending sample in dataset order: "
+            f"{first_pending_index + 1}/{len(dataset)} '{first_pending_rgb}'"
+        )
+        inference_dataset = Subset(dataset, pending_indices)
+
+    dataloader = DataLoader(inference_dataset, batch_size=1, num_workers=0)
 
     # -------------------- Model --------------------
     if half_precision:
@@ -238,15 +324,11 @@ if "__main__" == __name__:
 
             # Save predictions
             rgb_filename = batch["rgb_relative_path"][0]
-            rgb_basename = os.path.basename(rgb_filename)
-            scene_dir = os.path.join(output_dir, os.path.dirname(rgb_filename))
-            if not os.path.exists(scene_dir):
-                os.makedirs(scene_dir)
-            pred_basename = get_pred_name(
-                rgb_basename, dataset.name_mode, suffix=".npy"
+            save_to = get_prediction_path(
+                output_dir, rgb_filename, dataset.name_mode
             )
-            save_to = os.path.join(scene_dir, pred_basename)
+            os.makedirs(os.path.dirname(save_to), exist_ok=True)
             if os.path.exists(save_to):
                 logging.warning(f"Existing file: '{save_to}' will be overwritten")
 
-            np.save(save_to, depth_pred)
+            save_prediction_atomic(save_to, depth_pred)
