@@ -28,7 +28,7 @@ from io import BytesIO
 
 import numpy as np
 import torch
-from scipy import ndimage  # <--- Added for Sobel filter
+from scipy import ndimage
 
 from .base_depth_dataset import BaseDepthDataset, DepthFileNameMode, DatasetMode
 
