@@ -182,6 +182,10 @@ You can get the result under `output/eval`
 
 ## 🏋️ Training
 
+The workflow is **Stage 1 feature alignment → Stage 2 main training → optional
+[VKITTI far-depth post-training](#post-training)**. Complete Stage 2, including
+its FFT refinement, before starting the optional post-training run.
+
 Based on the previously created environment, install extended requirements:
 
 ```bash
@@ -216,7 +220,8 @@ only the main Stage 2 trainer; it does not include Stage 1 code or dependencies.
 
 To initialize Stage 2 from an existing Stage 1 checkpoint, start a new run with
 `--init_checkpoint`. This loads only the U-Net; optimizer and iteration counters
-start fresh using the Stage 2 config:
+start fresh using the Stage 2 config. `config/train_apdepth.yaml` keeps far-depth
+supervision disabled throughout the main training stage:
 
 ```bash
 python train.py --config config/train_apdepth.yaml \
@@ -237,19 +242,24 @@ python train.py --resume_run output/train_apdepth/checkpoint/latest --no_wandb
 
 ------------
 
-**VKITTI far-depth supervision and fine-tuning**
+## 🌤️ Optional post-training after Stage 2 <a name="post-training"></a>
 
-The main training config enables VKITTI known-far supervision. Measured depths in
-[80, 655.35] m supply an additional clipped far-depth target before VAE encoding;
-missing depth remains excluded. Evaluation masks and normalization quantiles are
-unchanged. The separately averaged far latent MSE and pixel L1 terms have weight
-0.5 and remain active during FFT refinement. Set
-`far_depth_supervision.enabled: false` for an ablation.
+**Start this step only after Stage 2 training has finished.** The new VKITTI
+far-depth supervision feature is enabled by `config/train_sky_finetune.yaml` for
+a separate post-training run initialized from the completed Stage 2 U-Net.
 
-Audit the native VKITTI depth and target coverage before training:
+Measured depths in [80, 655.35] m supply an additional clipped far-depth target
+before VAE encoding; missing depth remains excluded. Evaluation masks and
+normalization quantiles are unchanged. The separately averaged far latent MSE
+and pixel L1 terms have weight 0.5. For a post-training ablation, set
+`far_depth_supervision.enabled: false` in the post-training config.
+
+Use the same environment, datasets and base checkpoints prepared for Stage 2.
+First audit the native VKITTI depth and target coverage:
 
 ```bash
-python -m script.audit_far_supervision --base_data_dir "${BASE_DATA_DIR}" --samples 20
+python -m script.audit_far_supervision --config config/train_sky_finetune.yaml \
+    --base_data_dir "${BASE_DATA_DIR}" --samples 20
 ```
 
 Check the RGB, far masks, target images and `coverage.json` in `output/far_audit`.
@@ -257,28 +267,40 @@ If preprocessing replaced the far-plane values with zero, restore the original
 depth files. Zero depth is not treated as sky. Adjust each dataset config's `dir`
 to match the actual layout under `BASE_DATA_DIR`.
 
-To fine-tune an existing ApDepth checkpoint with the new supervision:
+Start a new post-training run from the final Stage 2 checkpoint (adjust the path
+if Stage 2 was saved elsewhere):
 
 ```bash
 python train.py --config config/train_sky_finetune.yaml \
-    --init_checkpoint /path/to/old_run/checkpoint/iter_021000 --no_wandb
+    --init_checkpoint output/train_apdepth/checkpoint/iter_021000 --no_wandb
 ```
 
-This runs 6000 new optimization steps at LR 5e-6 with 100 warmup steps and saves
+This resets the optimizer, learning-rate schedule and iteration counter, then
+runs 6000 new optimization steps at LR 5e-6 with 100 warmup steps and saves
 backups every 1000 steps in `output/train_sky_finetune/checkpoint`. It retains the
 90% Hypersim / 10% VKITTI sampling, original batch settings and periodic validation.
-Both `.safetensors` and `.bin` U-Net checkpoints are supported. `--resume_run`
-restores the saved config and training state; use it only to resume an existing
-run, not to enable this update in an old run. It cannot be combined with
-`--init_checkpoint`.
+These 6000 steps use latent MSE + pixel L1 reconstruction plus the new far-depth
+loss; the Stage 2 FFT refinement has already finished. Both `.safetensors` and
+`.bin` U-Net checkpoints are supported.
+
+If this post-training run is interrupted, resume its own checkpoint:
+
+```bash
+python train.py --resume_run output/train_sky_finetune/checkpoint/latest --no_wandb
+```
+
+`--resume_run` restores the saved config and training state. Starting post-training
+requires `--init_checkpoint` with the post-training config above; resuming a
+Stage 2 checkpoint would continue Stage 2 with its saved settings.
+`--resume_run` and `--init_checkpoint` cannot be combined.
 
 Monitor `train/far_loss`, `train/far_pixel_ratio` and `train/far_latent_ratio`.
-Compare KITTI and NYU against the original model after retraining; this code change
+Compare KITTI and NYU against the completed Stage 2 model after post-training; this change
 alone does not establish a metric improvement.
 
-**Evaluating results**
+## Evaluating trained checkpoints
 
-The main stage updates and saves the U-Net. For inference, copy a complete
+Stage 2 and optional post-training update and save the U-Net. For inference, copy a complete
 ApDepth pipeline checkpoint to a new directory, then replace that copy's `unet/`
 folder with the selected training checkpoint's `unet/`. The pipeline's VAE,
 tokenizer, text encoder and scheduler are still required; a training checkpoint

@@ -1,5 +1,7 @@
-# New fine-tuning run: --init_checkpoint <old_run>/checkpoint/iter_021000.
-# Use --resume_run only to resume this NEW run with its saved configuration.
+# Optional post-training AFTER Stage 2 (including FFT refinement) is complete.
+# Initialize from --init_checkpoint output/train_apdepth/checkpoint/iter_021000.
+# The 6000 new steps use reconstruction + far supervision with fresh optimizer/LR.
+# Use --resume_run only to resume this post-training run with its saved config.
 base_config:
 - config/train_apdepth.yaml
 
