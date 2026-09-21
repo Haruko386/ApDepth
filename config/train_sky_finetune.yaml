@@ -1,0 +1,21 @@
+# Optional post-training AFTER Stage 2 (including FFT refinement) is complete.
+# Initialize from --init_checkpoint output/train_apdepth/checkpoint/iter_021000.
+# The 6000 new steps use reconstruction + far supervision with fresh optimizer/LR.
+# Use --resume_run only to resume this post-training run with its saved config.
+base_config:
+- config/train_apdepth.yaml
+
+lr: 5.0e-06
+max_iter: 6000
+lr_scheduler:
+  kwargs:
+    total_iter: 6000
+    final_ratio: 0.1
+    warmup_steps: 100
+
+far_depth_supervision:
+  enabled: true
+  weight: 0.5
+
+trainer:
+  backup_period: 1000

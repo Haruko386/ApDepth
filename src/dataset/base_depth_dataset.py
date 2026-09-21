@@ -153,6 +153,10 @@ class BaseDepthDataset(Dataset):
             rasters["valid_mask_filled"] = self._get_valid_mask(
                 rasters["depth_filled_linear"]
             ).clone()
+            # Measured far depth is separate from missing GT and evaluation masks.
+            rasters["known_far_mask"] = self._get_known_far_mask(
+                rasters["depth_raw_linear"]
+            )
 
         other = {"index": index, "rgb_relative_path": rgb_rel_path}
 
@@ -228,6 +232,10 @@ class BaseDepthDataset(Dataset):
             (depth > self.min_depth), (depth < self.max_depth)
         ).bool()
         return valid_mask
+
+    def _get_known_far_mask(self, depth: torch.Tensor):
+        # Only datasets with a known native far-depth encoding opt in.
+        return torch.zeros_like(depth, dtype=torch.bool)
 
     def _training_preprocess(self, rasters):
         # Augmentation

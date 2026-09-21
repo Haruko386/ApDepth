@@ -67,6 +67,12 @@ latent_freq_loss:
   lambda: 0.5
     
 lr: 3.0e-05
+# Stage 2 uses the original objective. Enable known-far supervision only in
+# config/train_sky_finetune.yaml for post-training from a completed Stage 2 model.
+far_depth_supervision:
+  enabled: false
+  weight: 0.5
+
 lr_scheduler:
   name: IterExponential
   kwargs:

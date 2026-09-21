@@ -58,6 +58,12 @@ class VirtualKITTIDataset(BaseDepthDataset):
         depth_decoded = depth_in / 100.0
         return depth_decoded
 
+    def _get_known_far_mask(self, depth: torch.Tensor):
+        # PNG16 centimeters: known >=80 m depth (up to 655.35 m) is excluded
+        # from metric evaluation, but supplies the clipped +1 training target.
+        # This includes far buildings as well as sky; zero is still unknown.
+        return torch.isfinite(depth) & (depth >= self.max_depth) & (depth <= 655.35)
+
     def _load_rgb_data(self, rgb_rel_path):
         rgb_data = super()._load_rgb_data(rgb_rel_path)
         if self.kitti_bm_crop:
