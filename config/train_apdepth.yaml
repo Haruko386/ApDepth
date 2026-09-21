@@ -65,6 +65,9 @@ latent_freq_loss:
     loss_type: 'l1'
     high_pass_weight: 1.0
   lambda: 0.5
+  # true: linearly blend reconstruction -> frequency loss from iter 20k to max_iter
+  # false: preserve the original hard switch immediately after iter 20k
+  gradual_transition: true
     
 lr: 3.0e-05
 # Stage 2 uses the original objective. Enable known-far supervision only in
