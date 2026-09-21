@@ -77,7 +77,7 @@ if "__main__" == __name__:
     )
     parser.add_argument(
         "--init_checkpoint", type=str, default=None,
-        help="Initialize UNet from a training checkpoint with new config, optimizer and steps.",
+        help="Initialize UNet from a safetensors checkpoint directory with new config, optimizer and steps.",
     )
     parser.add_argument("--no_cuda", action="store_true", help="Do not use cuda.")
     parser.add_argument(
@@ -110,6 +110,15 @@ if "__main__" == __name__:
     args = parser.parse_args()
     if args.resume_run is not None and args.init_checkpoint is not None:
         parser.error("--resume_run and --init_checkpoint are mutually exclusive")
+    if args.init_checkpoint is not None:
+        init_unet_path = os.path.join(
+            args.init_checkpoint, "unet", "diffusion_pytorch_model.safetensors"
+        )
+        if not os.path.isfile(init_unet_path):
+            parser.error(
+                "--init_checkpoint requires a checkpoint directory containing "
+                "unet/diffusion_pytorch_model.safetensors; .bin checkpoints are not accepted."
+            )
     print("\n=== Arguments Summary ===")
     max_len = max(len(arg) for arg in vars(args))
     for arg in vars(args):

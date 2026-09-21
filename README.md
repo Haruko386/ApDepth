@@ -228,6 +228,10 @@ python train.py --config config/train_apdepth.yaml \
     --init_checkpoint /path/to/stage1/checkpoint/iter_020000 --no_wandb
 ```
 
+The initialization directory must contain
+`unet/diffusion_pytorch_model.safetensors`. `--init_checkpoint` rejects `.bin`
+checkpoints.
+
 To train the main stage directly from the base model without Stage 1 initialization:
 
 ```bash
@@ -280,8 +284,8 @@ runs 6000 new optimization steps at LR 5e-6 with 100 warmup steps and saves
 backups every 1000 steps in `output/train_sky_finetune/checkpoint`. It retains the
 90% Hypersim / 10% VKITTI sampling, original batch settings and periodic validation.
 These 6000 steps use latent MSE + pixel L1 reconstruction plus the new far-depth
-loss; the Stage 2 FFT refinement has already finished. Both `.safetensors` and
-`.bin` U-Net checkpoints are supported.
+loss; the Stage 2 FFT refinement has already finished. Initialization requires
+`unet/diffusion_pytorch_model.safetensors` in the supplied checkpoint directory.
 
 If this post-training run is interrupted, resume its own checkpoint:
 
