@@ -54,6 +54,8 @@ from src.util.alignment import align_depth_least_square
 from src.util.seeding import generate_seed_sequence
 
 class ApDepthTrainer:
+    FREQUENCY_LOSS_START_ITER = 20000
+
     def __init__(
         self,
         cfg: OmegaConf,
@@ -114,6 +116,11 @@ class ApDepthTrainer:
         self.loss = get_loss(loss_name=self.cfg.loss.name, **self.cfg.loss.kwargs)
         self.l1_loss = get_loss(loss_name=self.cfg.l1_loss.name, **self.cfg.l1_loss.kwargs)
         self.latent_freq_loss = get_loss(loss_name=self.cfg.latent_freq_loss.name, ** self.cfg.latent_freq_loss.kwargs)
+        self.gradual_loss_transition = self.cfg.latent_freq_loss.get(
+            "gradual_transition", False
+        )
+        if not isinstance(self.gradual_loss_transition, bool):
+            raise TypeError("latent_freq_loss.gradual_transition must be a boolean")
 
         far_cfg = self.cfg.get("far_depth_supervision", {})
         self.far_enabled = bool(far_cfg.get("enabled", False))
@@ -129,7 +136,12 @@ class ApDepthTrainer:
         # Eval metrics
         self.metric_funcs = [getattr(metric, _met) for _met in cfg.eval.eval_metrics]
         self.train_metrics = MetricTracker(
-            "loss", "latent_freq_loss", "far_loss", "far_pixel_ratio", "far_latent_ratio"
+            "loss",
+            "latent_freq_loss",
+            "freq_loss_weight",
+            "far_loss",
+            "far_pixel_ratio",
+            "far_latent_ratio",
         )
         self.val_metrics = MetricTracker(*[m.__name__ for m in self.metric_funcs])
 
@@ -259,12 +271,13 @@ class ApDepthTrainer:
 
                 torch.cuda.empty_cache()
 
-                loss, freq_loss, far_loss = self._compute_depth_loss(
+                loss, freq_loss, freq_loss_weight, far_loss = self._compute_depth_loss(
                     depth_pred, gt_depth_latent, depth, depth_gt_for_loss,
                     valid_mask_down, valid_mask_for_latent, far_mask_down, far_mask,
                 )
                 self.train_metrics.update("loss", loss.item())
                 self.train_metrics.update("latent_freq_loss", freq_loss.item())
+                self.train_metrics.update("freq_loss_weight", freq_loss_weight)
                 self.train_metrics.update("far_loss", far_loss.item())
                 self.train_metrics.update("far_pixel_ratio", far_mask.float().mean().item())
                 self.train_metrics.update("far_latent_ratio", far_mask_down.float().mean().item())
@@ -342,13 +355,29 @@ class ApDepthTrainer:
         valid_latent, valid_pixel, far_latent, far_pixel,
     ):
         # Preserve the original valid-GT objective and its normalization.
+        freq_loss_weight = self._get_frequency_loss_weight()
+        reconstruction_loss_weight = 1.0 - freq_loss_weight
+
+        reconstruction_loss = pred_latent.new_zeros(())
         freq_loss = pred_latent.new_zeros(())
-        if self.effective_iter <= 20000:
-            loss = masked_loss(self.loss, pred_latent.float(), target_latent.float(), valid_latent)
-            loss = loss + masked_loss(self.l1_loss, pred_depth.float(), target_depth.float(), valid_pixel)
-        else:
-            freq_loss = self.latent_freq_loss(pred_latent.float(), target_latent.float(), valid_latent)
-            loss = self.cfg.latent_freq_loss.get("lambda", 1.0) * freq_loss
+        if reconstruction_loss_weight > 0:
+            reconstruction_loss = masked_loss(
+                self.loss, pred_latent.float(), target_latent.float(), valid_latent
+            )
+            reconstruction_loss = reconstruction_loss + masked_loss(
+                self.l1_loss, pred_depth.float(), target_depth.float(), valid_pixel
+            )
+        if freq_loss_weight > 0:
+            freq_loss = self.latent_freq_loss(
+                pred_latent.float(), target_latent.float(), valid_latent
+            )
+
+        loss = reconstruction_loss_weight * reconstruction_loss
+        loss = loss + (
+            freq_loss_weight
+            * self.cfg.latent_freq_loss.get("lambda", 1.0)
+            * freq_loss
+        )
 
         far_loss = pred_latent.new_zeros(())
         if self.far_enabled:
@@ -357,7 +386,20 @@ class ApDepthTrainer:
             far_loss = masked_loss(self.loss, pred_latent.float(), target_latent.float(), far_latent)
             far_loss = far_loss + masked_loss(self.l1_loss, pred_depth.float(), target_depth.float(), far_pixel)
             loss = loss + self.far_weight * far_loss
-        return loss, freq_loss, far_loss
+        return loss, freq_loss, freq_loss_weight, far_loss
+
+    def _get_frequency_loss_weight(self):
+        if not self.gradual_loss_transition:
+            return float(self.effective_iter > self.FREQUENCY_LOSS_START_ITER)
+
+        transition_length = self.max_iter - self.FREQUENCY_LOSS_START_ITER
+        if transition_length <= 0:
+            return float(self.effective_iter > self.FREQUENCY_LOSS_START_ITER)
+
+        progress = (
+            self.effective_iter - self.FREQUENCY_LOSS_START_ITER
+        ) / transition_length
+        return min(max(progress, 0.0), 1.0)
 
     def encode_depth(self, depth_in):
         # stack depth into 3-channel

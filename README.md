@@ -238,6 +238,14 @@ To train the main stage directly from the base model without Stage 1 initializat
 python train.py --config config/train_apdepth.yaml --no_wandb
 ```
 
+The transition to latent frequency loss is controlled by
+`latent_freq_loss.gradual_transition` in `config/train_apdepth.yaml`. When `true`,
+the reconstruction loss weight decreases linearly from 1 to 0 between iteration
+20,000 and `max_iter`, while the frequency-loss weight increases from 0 to 1.
+When `false` or omitted, training preserves the original hard switch immediately
+after iteration 20,000. TensorBoard records the active frequency weight as
+`train/freq_loss_weight`.
+
 Resume from a checkpoint, e.g.
 
 ```bash
