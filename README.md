@@ -7,10 +7,10 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 [![Hugging Face Model](https://img.shields.io/badge/🤗%20Hugging%20Face-Model-green)](https://huggingface.co/developy/ApDepth)
 [![Hugging Face Demo](https://img.shields.io/badge/🤗%20Hugging%20Face-Demo-purple)](https://huggingface.co/spaces/developy/ApDepth)
 
-[**Haruko386**](https://haruko386.github.io/),
+<!-- [**Haruko386**](https://haruko386.github.io/),
 [Shuai Yuan](https://syjz.teacher.360eol.com/teacherBasic/preview?teacherId=23776),
 [Mingbo Lei](https://github.com/Ltohka), 
-[Yibo Chen](#)
+[Yibo Chen](#) -->
 
 ![cover](doc/cover.png)
 
