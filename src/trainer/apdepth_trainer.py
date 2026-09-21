@@ -47,6 +47,7 @@ from src.util import metric
 from src.util.data_loader import skip_first_batches
 from src.util.logging_util import tb_logger, eval_dic_to_text
 from src.util.loss import get_loss
+from src.util.far_supervision import masked_loss, prepare_far_supervision
 from src.util.lr_scheduler import IterExponential
 from src.util.metric import MetricTracker
 from src.util.alignment import align_depth_least_square
@@ -113,10 +114,23 @@ class ApDepthTrainer:
         self.loss = get_loss(loss_name=self.cfg.loss.name, **self.cfg.loss.kwargs)
         self.l1_loss = get_loss(loss_name=self.cfg.l1_loss.name, **self.cfg.l1_loss.kwargs)
         self.latent_freq_loss = get_loss(loss_name=self.cfg.latent_freq_loss.name, ** self.cfg.latent_freq_loss.kwargs)
+
+        far_cfg = self.cfg.get("far_depth_supervision", {})
+        self.far_enabled = bool(far_cfg.get("enabled", False))
+        self.far_weight = float(far_cfg.get("weight", 0.5))
+        if self.far_enabled:
+            if not np.isfinite(self.far_weight) or self.far_weight <= 0:
+                raise ValueError("far_depth_supervision.weight must be finite and positive")
+            norm = self.cfg.depth_normalization
+            if not (norm.type == "scale_shift_depth" and norm.clip
+                    and norm.norm_min == -1.0 and norm.norm_max == 1.0):
+                raise ValueError("Far supervision requires clipped linear depth in [-1, 1]")
         
         # Eval metrics
         self.metric_funcs = [getattr(metric, _met) for _met in cfg.eval.eval_metrics]
-        self.train_metrics = MetricTracker(*["loss", "latent_freq_loss"])
+        self.train_metrics = MetricTracker(
+            "loss", "latent_freq_loss", "far_loss", "far_pixel_ratio", "far_latent_ratio"
+        )
         self.val_metrics = MetricTracker(*[m.__name__ for m in self.metric_funcs])
 
         # main metric for best checkpoint saving
@@ -196,11 +210,18 @@ class ApDepthTrainer:
 
                 if self.gt_mask_type is not None:
                     valid_mask_for_latent = batch[self.gt_mask_type].to(device)
-                    invalid_mask = ~valid_mask_for_latent
-                    valid_mask_down = ~torch.max_pool2d(
-                        invalid_mask.float(), 8, 8
-                    ).bool()
+                    if self.far_enabled:
+                        far_mask = batch["known_far_mask"].to(device).bool()
+                        far_mask = far_mask & ~valid_mask_for_latent
+                    else:
+                        far_mask = torch.zeros_like(valid_mask_for_latent, dtype=torch.bool)
+                    depth_gt_for_latent, valid_mask_down, far_mask_down, _ = (
+                        prepare_far_supervision(
+                            depth_gt_for_latent, valid_mask_for_latent, far_mask
+                        )
+                    )
                     valid_mask_down = valid_mask_down.repeat((1, 4, 1, 1))
+                    far_mask_down = far_mask_down.repeat((1, 4, 1, 1))
                 else:
                     raise NotImplementedError
 
@@ -238,45 +259,15 @@ class ApDepthTrainer:
 
                 torch.cuda.empty_cache()
 
-                loss = 0.0
-
-                if self.effective_iter <= 20000: 
-                    # Masked latent loss (MSE loss)
-                    if self.gt_mask_type is not None:
-                        latent_loss = self.loss(
-                            depth_pred[valid_mask_down].float(),
-                            gt_depth_latent[valid_mask_down].float(),
-                        )
-                        pixel_loss = self.l1_loss(
-                            depth[valid_mask_for_latent].float(),
-                            depth_gt_for_loss[valid_mask_for_latent].float(),
-                        )
-                    else:
-                        latent_loss = self.loss(depth.float(), depth_gt_for_loss.float())
-                        pixel_loss = self.l1_loss(depth.float(), depth_gt_for_latent.float())
-                    
-                    # update loss
-                    loss = latent_loss.mean() + pixel_loss.mean()
-                    
-                    self.train_metrics.update("loss", loss.item())
-                else:
-                    # FFT latent loss (FFT loss)
-                    if self.gt_mask_type is not None:
-                        freq_loss = self.latent_freq_loss(
-                            depth_pred.float(),
-                            gt_depth_latent.float(),
-                            valid_mask_down
-                        )
-                    else:
-                        freq_loss = self.latent_freq_loss(
-                            depth_pred.float(),
-                            gt_depth_latent.float(),
-                            mask=None
-                        )
-
-                    self.train_metrics.update("latent_freq_loss", freq_loss.item())
-                    lambda_freq = self.cfg.latent_freq_loss.get('lambda', 1.0)
-                    loss = lambda_freq * freq_loss
+                loss, freq_loss, far_loss = self._compute_depth_loss(
+                    depth_pred, gt_depth_latent, depth, depth_gt_for_loss,
+                    valid_mask_down, valid_mask_for_latent, far_mask_down, far_mask,
+                )
+                self.train_metrics.update("loss", loss.item())
+                self.train_metrics.update("latent_freq_loss", freq_loss.item())
+                self.train_metrics.update("far_loss", far_loss.item())
+                self.train_metrics.update("far_pixel_ratio", far_mask.float().mean().item())
+                self.train_metrics.update("far_latent_ratio", far_mask_down.float().mean().item())
 
                 loss = loss / self.gradient_accumulation_steps
                 loss.backward()
@@ -299,7 +290,7 @@ class ApDepthTrainer:
 
                     # Log to tensorboard
                     accumulated_metrics = self.train_metrics.result()
-                    loss_to_log = accumulated_metrics.get("latent_freq_loss", 0.0) if self.effective_iter > 20000 else accumulated_metrics.get("loss", 0.0) # Only ACMer would do this
+                    loss_to_log = accumulated_metrics["loss"]
 
                     tb_logger.log_dic(
                         {
@@ -345,6 +336,28 @@ class ApDepthTrainer:
 
             # Epoch end
             self.n_batch_in_epoch = 0
+
+    def _compute_depth_loss(
+        self, pred_latent, target_latent, pred_depth, target_depth,
+        valid_latent, valid_pixel, far_latent, far_pixel,
+    ):
+        # Preserve the original valid-GT objective and its normalization.
+        freq_loss = pred_latent.new_zeros(())
+        if self.effective_iter <= 20000:
+            loss = masked_loss(self.loss, pred_latent.float(), target_latent.float(), valid_latent)
+            loss = loss + masked_loss(self.l1_loss, pred_depth.float(), target_depth.float(), valid_pixel)
+        else:
+            freq_loss = self.latent_freq_loss(pred_latent.float(), target_latent.float(), valid_latent)
+            loss = self.cfg.latent_freq_loss.get("lambda", 1.0) * freq_loss
+
+        far_loss = pred_latent.new_zeros(())
+        if self.far_enabled:
+            # Maintain an absolute far-depth target even during FFT refinement:
+            # spectral magnitude alone cannot distinguish opposite-sign targets.
+            far_loss = masked_loss(self.loss, pred_latent.float(), target_latent.float(), far_latent)
+            far_loss = far_loss + masked_loss(self.l1_loss, pred_depth.float(), target_depth.float(), far_pixel)
+            loss = loss + self.far_weight * far_loss
+        return loss, freq_loss, far_loss
 
     def encode_depth(self, depth_in):
         # stack depth into 3-channel

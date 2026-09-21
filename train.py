@@ -63,7 +63,7 @@ if "__main__" == __name__:
     parser.add_argument( 
         "--config",
         type=str,
-        default="ApDepth/config/train_apdepth.yaml",
+        default="config/train_apdepth.yaml",
         help="Path to config file.",
     )
     parser.add_argument(
@@ -74,6 +74,10 @@ if "__main__" == __name__:
     )
     parser.add_argument(
         "--output_dir", type=str, default=None, help="directory to save checkpoints"
+    )
+    parser.add_argument(
+        "--init_checkpoint", type=str, default=None,
+        help="Initialize UNet from a training checkpoint with new config, optimizer and steps.",
     )
     parser.add_argument("--no_cuda", action="store_true", help="Do not use cuda.")
     parser.add_argument(
@@ -89,12 +93,12 @@ if "__main__" == __name__:
         help="On Slurm cluster, do not copy data to local scratch",
     )
     parser.add_argument(
-        "--base_data_dir", type=str, default="/root/Dataset", help="directory of training data",
+        "--base_data_dir", type=str, default=None, help="directory of training data (or BASE_DATA_DIR)",
     )
     parser.add_argument(
         "--base_ckpt_dir",
         type=str,
-        default="./pretrained_checkpoint",
+        default=None,
         help="directory of pretrained checkpoint",
     )
     parser.add_argument(
@@ -104,6 +108,8 @@ if "__main__" == __name__:
     )
 
     args = parser.parse_args()
+    if args.resume_run is not None and args.init_checkpoint is not None:
+        parser.error("--resume_run and --init_checkpoint are mutually exclusive")
     print("\n=== Arguments Summary ===")
     max_len = max(len(arg) for arg in vars(args))
     for arg in vars(args):
@@ -118,7 +124,7 @@ if "__main__" == __name__:
     base_ckpt_dir = (
         args.base_ckpt_dir
         if args.base_ckpt_dir is not None
-        else os.environ["BASE_CKPT_DIR"]
+        else os.environ.get("BASE_CKPT_DIR", "./pretrained_checkpoint")
     )
 
     # -------------------- Initialization --------------------
@@ -359,9 +365,12 @@ if "__main__" == __name__:
         trainer.load_checkpoint(
             resume_run, load_trainer_state=True, resume_lr_scheduler=True
         )
+    elif args.init_checkpoint is not None:
+        trainer.load_checkpoint(args.init_checkpoint, load_trainer_state=False)
 
     # -------------------- Training & Evaluation Loop --------------------
     try:
         trainer.train(t_end=t_end)
     except Exception as e:
         logging.exception(e)
+        raise

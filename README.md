@@ -18,7 +18,7 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 
 ## 📢 News
 - **2026-04-06:** `ApDepth V2-0` is released!
-- **2026-04-03:** We officially release the complete code for **ApDepth**! The repository now includes the full coarse-to-fine two-stage training pipeline and evaluation scripts.
+- **2026-04-03:** We officially release the code for **ApDepth**! Stage 1 feature-alignment training is maintained in [ApDepth_Stage1](https://github.com/Haruko386/ApDepth_Stage1); this repository provides Stage 2 training, inference and evaluation.
 - **2026-01-15:** We successfully introduce a spatial-preserving **Conv Adapter** and a **Cosine Similarity Loss** to enhance feature alignment, alongside a **Pixel-level $L_1$ Loss** to establish an accurate global metric scale.
 - **2025-10-25:** Inspired by DepthMaster, we propose a two-stage loss function training strategy based on `ApDepth V1-0`. In the first stage, we perform foundational training using MSE loss. In the second stage, we learn edge structures through FFT loss. Based on this, we introduce `ApDepth V1-1`.
 - **2025-10-09:** We propose a novel diffusion-based depth estimation framework guided by pre-trained models.
@@ -197,40 +197,33 @@ export BASE_CKPT_DIR=YOUR_CHECKPOINT_DIR  # directory of pretrained checkpoint
 
 Download Stable Diffusion v2 [checkpoint](https://huggingface.co/sd2-community/stable-diffusion-2-1) into `${BASE_CKPT_DIR}`
 
-Download the checkpoint of [Depth-Anything-V2](https://github.com/DepthAnything/Depth-Anything-V2) into `DA2/checkpoints/`. Stage 1 uses the ViT-G checkpoint by default at `DA2/checkpoints/depth_anything_v2_vitg.pth` as the external semantic encoder.
+Download the ViT-G checkpoint of [Depth-Anything-V2](https://github.com/DepthAnything/Depth-Anything-V2) to `DA2/checkpoints/depth_anything_v2_vitg.pth`. The ApDepth pipeline uses it to generate the depth prior during training and inference.
 
-Prepare for [Hypersim](https://github.com/apple/ml-hypersim) and [Virtual KITTI 2](https://europe.naverlabs.com/research/computer-vision/proxy-virtual-worlds-vkitti-2/) datasets and save into `${BASE_DATA_DIR}`. Please refer to [this README](script/dataset_preprocess/hypersim/README.md) for Hypersim preprocessing. Stage 1 uses `config/dataset/dataset_apdepth_train_s1.yaml`; the main training stage uses `config/dataset/dataset_train.yaml`.
+Prepare [Hypersim](https://github.com/apple/ml-hypersim) and [Virtual KITTI 2](https://europe.naverlabs.com/research/computer-vision/proxy-virtual-worlds-vkitti-2/) under `${BASE_DATA_DIR}`. Please refer to [this README](script/dataset_preprocess/hypersim/README.md) for Hypersim preprocessing. Configure the training paths in `config/dataset/dataset_train.yaml` and prepare the validation datasets listed in `config/dataset/dataset_val.yaml` and `config/dataset/dataset_vis.yaml`.
 
 ------------
 
 **Stage 1: feature alignment pre-training**
 
-Stage 1 has been integrated into this repository. It trains the denoising U-Net and DINOv2 adapter in feature space before the main ApDepth training stage.
-
-```bash
-bash script/apdepth_train_s1.sh
-```
-
-Equivalent direct command:
-
-```bash
-python apdepth_train_s1.py \
-    --config config/apdepth_train_s1.yaml \
-    --base_data_dir ${BASE_DATA_DIR} \
-    --base_ckpt_dir ${BASE_CKPT_DIR} \
-    --output_dir output/stage1 \
-    --no_wandb
-```
-
-Resume Stage 1 from a checkpoint, e.g.
-
-```bash
-python apdepth_train_s1.py --resume_run output/stage1/checkpoint/latest --no_wandb
-```
+Stage 1 is maintained separately in
+[Haruko386/ApDepth_Stage1](https://github.com/Haruko386/ApDepth_Stage1).
+Follow that repository's setup and training instructions. This repository contains
+only the main Stage 2 trainer; it does not include Stage 1 code or dependencies.
 
 ------------
 
 **Stage 2: main ApDepth training**
+
+To initialize Stage 2 from an existing Stage 1 checkpoint, start a new run with
+`--init_checkpoint`. This loads only the U-Net; optimizer and iteration counters
+start fresh using the Stage 2 config:
+
+```bash
+python train.py --config config/train_apdepth.yaml \
+    --init_checkpoint /path/to/stage1/checkpoint/iter_020000 --no_wandb
+```
+
+To train the main stage directly from the base model without Stage 1 initialization:
 
 ```bash
 python train.py --config config/train_apdepth.yaml --no_wandb
@@ -244,9 +237,52 @@ python train.py --resume_run output/train_apdepth/checkpoint/latest --no_wandb
 
 ------------
 
+**VKITTI far-depth supervision and fine-tuning**
+
+The main training config enables VKITTI known-far supervision. Measured depths in
+[80, 655.35] m supply an additional clipped far-depth target before VAE encoding;
+missing depth remains excluded. Evaluation masks and normalization quantiles are
+unchanged. The separately averaged far latent MSE and pixel L1 terms have weight
+0.5 and remain active during FFT refinement. Set
+`far_depth_supervision.enabled: false` for an ablation.
+
+Audit the native VKITTI depth and target coverage before training:
+
+```bash
+python -m script.audit_far_supervision --base_data_dir "${BASE_DATA_DIR}" --samples 20
+```
+
+Check the RGB, far masks, target images and `coverage.json` in `output/far_audit`.
+If preprocessing replaced the far-plane values with zero, restore the original
+depth files. Zero depth is not treated as sky. Adjust each dataset config's `dir`
+to match the actual layout under `BASE_DATA_DIR`.
+
+To fine-tune an existing ApDepth checkpoint with the new supervision:
+
+```bash
+python train.py --config config/train_sky_finetune.yaml \
+    --init_checkpoint /path/to/old_run/checkpoint/iter_021000 --no_wandb
+```
+
+This runs 6000 new optimization steps at LR 5e-6 with 100 warmup steps and saves
+backups every 1000 steps in `output/train_sky_finetune/checkpoint`. It retains the
+90% Hypersim / 10% VKITTI sampling, original batch settings and periodic validation.
+Both `.safetensors` and `.bin` U-Net checkpoints are supported. `--resume_run`
+restores the saved config and training state; use it only to resume an existing
+run, not to enable this update in an old run. It cannot be combined with
+`--init_checkpoint`.
+
+Monitor `train/far_loss`, `train/far_pixel_ratio` and `train/far_latent_ratio`.
+Compare KITTI and NYU against the original model after retraining; this code change
+alone does not establish a metric improvement.
+
 **Evaluating results**
 
-Only the U-Net is updated and saved during training. To use the inference pipeline with your training result, replace `unet` folder in `train_apdepth` checkpoints with that in the `checkpoint` output folder. Then refer to [this section](#evaluation) for evaluation.
+The main stage updates and saves the U-Net. For inference, copy a complete
+ApDepth pipeline checkpoint to a new directory, then replace that copy's `unet/`
+folder with the selected training checkpoint's `unet/`. The pipeline's VAE,
+tokenizer, text encoder and scheduler are still required; a training checkpoint
+alone is not a complete inference pipeline. Then refer to [evaluation](#evaluation).
 
 > [!IMPORTANT]
 >

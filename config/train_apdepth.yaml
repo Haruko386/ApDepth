@@ -67,6 +67,12 @@ latent_freq_loss:
   lambda: 0.5
     
 lr: 3.0e-05
+# Restore supervision for VKITTI's measured far depth without changing
+# metric evaluation masks or the single-step 8-channel inference pipeline.
+far_depth_supervision:
+  enabled: true
+  weight: 0.5
+
 lr_scheduler:
   name: IterExponential
   kwargs:
