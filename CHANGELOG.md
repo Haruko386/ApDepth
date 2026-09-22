@@ -1,65 +1,85 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+This file records the notable changes in ApDepth from the complete Git history. Release dates follow the commit dates referenced by the repository's lightweight tags.
 
-----------
+## Unreleased — ApDepth V2.1
 
-## [ApDepth-v2-1] - 2026-04-06
-
-<a><img src="./doc/apdepth-v2-0/train.png" alt="Framework" align=center></a>
-
-## Goodbye 2025, 2026 is near 🎉
-
-## [ApDepth-v1-2] - 2025-11-25
-> We present a new Loss_Function for our two stage training strats. We use `MSE_Loss` for stage one to
-> learn the whole information and stage two uses our propoesd `Latent_Frequence_Loss` to refine edge detail
-
-**Training Framework:**
-
-<a><img src="./doc/apdepth-v1-2/train.png" alt="Framework" align=center></a>
-
-**Inference Framework:**
-
-<a><img src="./doc/apdepth-v1-2/infer.png" alt="Framework" align=center></a>
-
-## [ApDepth-v1-1] - 2025-10-09
-> We use a pretrained model as a "teacher" to "teach" `stable diffusion 2-1` to generate Depth Map.
-
-**Training Framework:**
-
-<a><img src="./doc/apdepth-v1-1/train.png" alt="Framework" align=center></a>
-
-**Inference Framework:**
-
-<a><img src="./doc/apdepth-v1-1/infer.png" alt="Framework" align=center></a>
-
-## [ApDepth-v1-0] - 2025-09-23
 ### Added
->We change Marigold from `Stochastic multi-step generation` to `Deterministic one-step perception`. And achieve the same result.
 
-<a><img src="./doc/cover.jpg" alt="Framework" align=center></a>
+- Added direct Stage 2 fine-tuning from the original Stable Diffusion 2.1 checkpoint, without requiring Stage 1 training.
+- Added Spatially Debiased Window Transport (SDWT) for geometry-aware local depth supervision, with gradient loss and an optional low-weight frequency loss.
+- Added separate configurations for SDWT training, SDWT with FFT, and component-level loss ablations.
+- Added optional VAE decoder fine-tuning and checkpoint save/load support.
+- Added SafeTensors checkpoint export, recursive folder inference, and resumable dataset inference.
+- Added VKITTI far-depth post-training and a gradual frequency-loss transition.
 
-### Result
-| Method | # Training Samples | | NYUv2 | | KITTI | | ETH3D | | ScanNet | | DIODE | | Avg. Rank |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| | **Real** | **Synthetic** | **AbsRel↓** | **δ1↑** | **AbsRel↓** | **δ1↑** | **AbsRel↓** | **δ1↑** | **AbsRel↓** | **δ1↑** | **AbsRel↓** | **δ1↑** | |
-| Marigold (w/o) | —* | 74K | 6.0 | 95.9 | 10.5 | 90.4 | 7.1 | 95.1 | 6.9 | 94.5 | 31.0 | 77.2 | - |
-| **Marigold** | | | 5.5 | 96.4 | **9.9** | **91.6** | **6.5** | **96.0** | 6.4 | 95.1 | 30.8 | **77.3** | - |
-| Ours | —* | 74K | **5.3** | **96.5** | 10.7 | 89.3 | **6.5** | 95.8 | **6.0** | **96.3** | **30.0** | 77.0 | - |
+### Changed
 
-## [Marigold-depth-v1-0] - 2023-12-04
-The Result is showed in table
-| Method | # Training Samples | | NYUv2 | | KITTI | | ETH3D | | ScanNet | | DIODE | | Avg. Rank |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| | **Real** | **Synthetic** | **AbsRel↓** | **δ1↑** | **AbsRel↓** | **δ1↑** | **AbsRel↓** | **δ1↑** | **AbsRel↓** | **δ1↑** | **AbsRel↓** | **δ1↑** | |
-| DiverseDepth [56] | 320K | — | 11.7 | 87.5 | 19.0 | 70.4 | 22.8 | 69.4 | 10.9 | 88.2 | 37.6 | 63.1 | 7.6 |
-| MiDaS [35] | 2M | — | 11.1 | 88.5 | 23.6 | 63.0 | 18.4 | 75.2 | 12.1 | 84.6 | 33.2 | 71.5 | 7.3 |
-| LeReS [57] | 300K | 54K | 9.0 | 91.6 | 14.9 | 78.4 | 17.1 | 77.7 | 9.1 | 91.7 | 27.1 | 76.6 | 5.2 |
-| Omnidata [13] | 11.9M | 310K | 7.4 | 94.5 | 14.9 | 83.5 | 16.6 | 77.8 | 7.5 | 93.6 | 33.9 | 74.2 | 4.8 |
-| HDN [60] | 300K | — | 6.9 | 94.8 | 11.5 | 86.7 | 12.1 | 83.3 | 8.0 | 93.9 | 24.6 | **78.0** | 3.2 |
-| DPT [36] | 1.2M | 188K | 9.8 | 90.3 | 10.0 | 90.1 | 7.8 | 94.6 | 8.2 | 93.4 | **18.2** | 75.8 | 3.9 |
-| Marigold (w/o) | —* | 74K | 6.0 | 95.9 | 10.5 | 90.4 | 7.1 | 95.1 | 6.9 | 94.5 | 31.0 | 77.2 | 2.5 |
-| **Marigold** | | | **5.5** | **96.4** | **9.9** | **91.6** | **6.5** | **96.0** | **6.4** | **95.1** | 30.8 | 77.3 | **1.4** |
-<hr>
+- Kept the original two-stage and Stage 1 workflows available while documenting three supported training strategies.
+- Simplified the repository layout, refreshed model configuration and checkpoint links, and updated CI and Docker packaging.
 
-![cover](doc/teaser_collage_transparant.png)
+## [ApDepth-V2-0] — 2026-04-06
+
+- Renamed the training and inference package from `marigold` to `apdepth`.
+- Reorganized trainer, model configuration, checkpoint directories, and command-line documentation around the ApDepth workflow.
+- Updated model download scripts and expanded Docker, training, and inference instructions.
+
+### Architecture
+
+<p align="center">
+  <img src="./doc/apdepth-v2-0/train.png" alt="ApDepth V2.0 training architecture" width="900">
+</p>
+
+## [ApDepth-V1-2] — 2026-04-02
+
+- Extended the two-stage objective from latent frequency refinement to combined latent, pixel, gradient, and surface-normal supervision.
+- Added Sobel-based edge masks and revised the evaluation and loss strategies.
+- Added DIODE training data support and updated dataset sampling.
+- Switched the teacher backbone to Depth Anything V2 Giant and refreshed the training configuration.
+
+### Architecture
+
+<p align="center">
+  <img src="./doc/apdepth-v1-2/train.png" alt="ApDepth V1.2 training architecture" width="900">
+</p>
+
+<p align="center">
+  <img src="./doc/apdepth-v1-2/infer.png" alt="ApDepth V1.2 inference architecture" width="900">
+</p>
+
+## [ApDepth-V1-1] — 2025-11-01
+
+- Introduced teacher-guided Stable Diffusion 2.1 fine-tuning with Depth Anything V2 depth priors.
+- Updated the training pipeline, datasets, evaluation path, and V1.1 configurations for the teacher-guided workflow.
+
+### Architecture
+
+<p align="center">
+  <img src="./doc/apdepth-v1-1/train.png" alt="ApDepth V1.1 training architecture" width="900">
+</p>
+
+<p align="center">
+  <img src="./doc/apdepth-v1-1/infer.png" alt="ApDepth V1.1 inference architecture" width="900">
+</p>
+
+## [ApDepthv1] — 2025-10-09
+
+- Added the first frequency-domain loss experiments and an eight-channel UNet input path.
+- Added training utilities, example assets, and the initial training and inference workflow documentation.
+
+## [ApDepth] — 2025-09-23
+
+- Released the first ApDepth implementation.
+- Converted the Marigold-style stochastic multi-step process into deterministic single-step depth prediction based on Stable Diffusion 2.1.
+- Added the initial training, inference, evaluation, and dataset pipeline.
+
+## [Backup] — 2025-09-13
+
+- Archived the early repository bootstrap and imported baseline implementation before the first ApDepth release.
+
+[ApDepth-V2-0]: https://github.com/Haruko386/ApDepth/releases/tag/ApDepth-V2-0
+[ApDepth-V1-2]: https://github.com/Haruko386/ApDepth/releases/tag/ApDepth-V1-2
+[ApDepth-V1-1]: https://github.com/Haruko386/ApDepth/releases/tag/ApDepth-V1-1
+[ApDepthv1]: https://github.com/Haruko386/ApDepth/releases/tag/ApDepthv1
+[ApDepth]: https://github.com/Haruko386/ApDepth/releases/tag/ApDepth
+[Backup]: https://github.com/Haruko386/ApDepth/releases/tag/Backup
