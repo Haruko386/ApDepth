@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="96" height="28" viewBox="0 0 96 28" role="img" aria-label="Model weights">
+<svg xmlns="http://www.w3.org/2000/svg" width="88" height="28" viewBox="0 0 88 28" role="img" aria-label="Model weights">
   <title>Model weights</title>
   <defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="#d97706"/><stop offset="1" stop-color="#a16207"/></linearGradient></defs>
-  <rect x=".5" y=".5" width="95" height="27" rx="13.5" fill="url(#g)" stroke="#fff" stroke-opacity=".18"/>
+  <rect x=".5" y=".5" width="87" height="27" rx="13.5" fill="url(#g)" stroke="#fff" stroke-opacity=".18"/>
   <path d="m14 7.5 6 3.2v6.6l-6 3.2-6-3.2v-6.6l6-3.2Z" fill="none" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/><path d="m8.5 11 5.5 3 5.5-3M14 14v6" fill="none" stroke="#fff" stroke-width="1.2"/>
   <text x="27" y="18.5" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="13" font-weight="650">Weights</text>
 </svg>

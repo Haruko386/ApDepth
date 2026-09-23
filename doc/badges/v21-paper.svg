@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="84" height="28" viewBox="0 0 84 28" role="img" aria-label="Paper and citation">
+<svg xmlns="http://www.w3.org/2000/svg" width="73" height="28" viewBox="0 0 73 28" role="img" aria-label="Paper and citation">
   <title>Paper and citation</title>
   <defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="#2563eb"/><stop offset="1" stop-color="#4338ca"/></linearGradient></defs>
-  <rect x=".5" y=".5" width="83" height="27" rx="13.5" fill="url(#g)" stroke="#fff" stroke-opacity=".18"/>
+  <rect x=".5" y=".5" width="72" height="27" rx="13.5" fill="url(#g)" stroke="#fff" stroke-opacity=".18"/>
   <path d="M10 7.5h6l3 3V20H10V7.5Z" fill="none" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/><path d="M16 7.5V11h3M12.5 14h4M12.5 17h4" fill="none" stroke="#fff" stroke-width="1.2" stroke-linecap="round"/>
   <text x="28" y="18.5" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="13" font-weight="650">Paper</text>
 </svg>
