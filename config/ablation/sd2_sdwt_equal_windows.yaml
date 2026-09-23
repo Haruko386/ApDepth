@@ -1,0 +1,7 @@
+base_config:
+- config/train_sd2_sdwt.yaml
+
+# Gives every non-empty window equal weight regardless of valid support.
+sdwt_loss:
+  kwargs:
+    support_weighted: false

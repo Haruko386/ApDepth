@@ -1,0 +1,7 @@
+base_config:
+- config/train_sd2_sdwt.yaml
+
+# Uses the regularized cross-transport cost without self-cost correction.
+sdwt_loss:
+  kwargs:
+    debiased: false

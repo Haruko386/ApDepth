@@ -1,0 +1,6 @@
+base_config:
+- config/train_sd2_sdwt.yaml
+
+sdwt_loss:
+  kwargs:
+    weight: 0.0

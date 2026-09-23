@@ -1,0 +1,49 @@
+# Direct SD2.1 fine-tuning with Spatially Debiased Window Transport (SDWT).
+# No Stage-1 weights are loaded.
+base_config:
+- config/train_apdepth.yaml
+
+initialization: base_sd2
+
+pipeline:
+  kwargs:
+    default_processing_resolution: 0
+
+trainer:
+  gradient_checkpointing: true
+  max_grad_norm: 1.0
+
+# Keep linear depth and the existing evaluation protocol for controlled ablations.
+# SDWT adds spatially constrained, debiased local transport on two shifted
+# window grids while retaining reconstruction supervision.
+sdwt_loss:
+  enabled: true
+  kwargs:
+    window_size: 5
+    transport_iter: 10
+    transport_tau: 0.1
+    spatial_weight: 0.15
+    charbonnier_eps: 0.001
+    debiased: true
+    shifted_windows: true
+    support_weighted: true
+    chunk_size: 512
+    start_iter: 8000
+    ramp_iters: 4000
+    weight: 1.0
+    latent_weight: 1.0
+    pixel_weight: 1.0
+    gradient_weight: 0.5
+    final_latent_weight: 0.5
+    final_pixel_weight: 0.25
+    final_gradient_weight: 0.1
+
+# Preserve the RGB/target encoder; adapt only decoder + post_quant_conv.
+vae_decoder:
+  enabled: true
+  start_iter: 8000
+  lr: 3.0e-06
+
+lr_scheduler:
+  kwargs:
+    total_iter: 21000
