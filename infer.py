@@ -31,6 +31,7 @@ from torch.utils.data import DataLoader, Subset
 from tqdm.auto import tqdm
 
 from apdepth import ApDepthPipeline
+from apdepth.util.checkpoint import load_training_components
 from src.util.seeding import seed_all
 from src.dataset import (
     BaseDepthDataset,
@@ -109,6 +110,14 @@ if "__main__" == __name__:
     )
 
     # dataset setting
+    parser.add_argument(
+        "--training_checkpoint",
+        default=None,
+        help=(
+            "Stage-2 checkpoint to load over --checkpoint (original SD2 base); "
+            "includes saved VAE."
+        ),
+    )
     parser.add_argument(
         "--dataset_config",
         type=str,
@@ -293,9 +302,14 @@ if "__main__" == __name__:
         dtype = torch.float32
         variant = None
 
+    components = (
+        load_training_components(args.training_checkpoint, dtype)
+        if args.training_checkpoint
+        else {}
+    )
     pipe = ApDepthPipeline.from_pretrained(
-        checkpoint_path, variant=variant, torch_dtype=dtype
-    )   
+        checkpoint_path, variant=variant, torch_dtype=dtype, **components
+    )
 
     try:
         pipe.enable_xformers_memory_efficient_attention()
