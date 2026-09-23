@@ -1,0 +1,7 @@
+base_config:
+- config/train_sd2_sdwt.yaml
+
+# Uses only the fixed non-overlapping window grid.
+sdwt_loss:
+  kwargs:
+    shifted_windows: false

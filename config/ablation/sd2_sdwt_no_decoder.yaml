@@ -1,0 +1,5 @@
+base_config:
+- config/train_sd2_sdwt.yaml
+
+vae_decoder:
+  enabled: false

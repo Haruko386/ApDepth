@@ -1,0 +1,7 @@
+base_config:
+- config/train_sd2_sdwt.yaml
+
+# Tests whether coordinate-aware matching prevents arbitrary local permutation.
+sdwt_loss:
+  kwargs:
+    spatial_weight: 0.0

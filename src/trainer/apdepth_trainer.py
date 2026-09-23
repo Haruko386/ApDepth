@@ -1,7 +1,7 @@
 # Last modified: 2026-03-04
 #
 # Copyright 2026 Jiawei Wang, SJZU. All rights reserved.
-# 
+#
 # This file has been modified from the original version.
 # Original copyright (c) 2023 Bingxin Ke, ETH Zurich. All rights reserved.
 #
@@ -25,6 +25,7 @@
 
 
 import logging
+import json
 import os
 import shutil
 from datetime import datetime
@@ -52,6 +53,8 @@ from src.util.lr_scheduler import IterExponential
 from src.util.metric import MetricTracker
 from src.util.alignment import align_depth_least_square
 from src.util.seeding import generate_seed_sequence
+from src.util.sdwt_loss import SD2SDWTObjective
+
 
 class ApDepthTrainer:
     FREQUENCY_LOSS_START_ITER = 20000
@@ -76,7 +79,7 @@ class ApDepthTrainer:
         self.seed: Union[int, None] = (
             self.cfg.trainer.init_seed
         )  # used to generate seed sequence, set to `None` to train w/o seeding
-        
+
         self.out_dir_ckpt = out_dir_ckpt
         self.out_dir_eval = out_dir_eval
         self.out_dir_vis = out_dir_vis
@@ -93,16 +96,80 @@ class ApDepthTrainer:
         self.model.encode_empty_text()
         self.empty_text_embed = self.model.empty_text_embed.detach().clone().to(device)
 
-        self.model.unet.enable_xformers_memory_efficient_attention()
+        if self.cfg.trainer.get("enable_xformers", True) and self.device.type == "cuda":
+            try:
+                self.model.unet.enable_xformers_memory_efficient_attention()
+            except (ImportError, ModuleNotFoundError):
+                logging.info("xFormers unavailable; using PyTorch attention")
+        if self.cfg.trainer.get("gradient_checkpointing", False):
+            self.model.unet.enable_gradient_checkpointing()
 
         # Trainability
         self.model.vae.requires_grad_(False)
         self.model.text_encoder.requires_grad_(False)
         self.model.unet.requires_grad_(True)
 
+        sdwt_cfg = self.cfg.get("sdwt_loss", {})
+        self.stage2_loss = (
+            SD2SDWTObjective(**dict(sdwt_cfg.get("kwargs", {})))
+            if sdwt_cfg.get("enabled", False)
+            else None
+        )
+        sdwt_frequency_cfg = self.cfg.get("sdwt_frequency_loss", {})
+        self.sdwt_frequency_enabled = bool(sdwt_frequency_cfg.get("enabled", False))
+        self.sdwt_frequency_start_iter = int(sdwt_frequency_cfg.get("start_iter", 8000))
+        self.sdwt_frequency_ramp_iters = int(sdwt_frequency_cfg.get("ramp_iters", 4000))
+        self.sdwt_frequency_final_weight = float(
+            sdwt_frequency_cfg.get("final_weight", 0.2)
+        )
+        if self.sdwt_frequency_enabled:
+            if self.stage2_loss is None:
+                raise ValueError("sdwt_frequency_loss requires sdwt_loss.enabled=true")
+            if (
+                self.sdwt_frequency_start_iter < 0
+                or self.sdwt_frequency_ramp_iters <= 0
+            ):
+                raise ValueError(
+                    "sdwt_frequency_loss needs start_iter >= 0 and ramp_iters > 0"
+                )
+            if (
+                not np.isfinite(self.sdwt_frequency_final_weight)
+                or self.sdwt_frequency_final_weight < 0
+            ):
+                raise ValueError(
+                    "sdwt_frequency_loss.final_weight must be finite and nonnegative"
+                )
+        decoder_cfg = self.cfg.get("vae_decoder", {})
+        self.train_decoder = bool(decoder_cfg.get("enabled", False))
+        self.has_finetuned_vae = self.train_decoder
+        self.decoder_start_iter = int(decoder_cfg.get("start_iter", 0))
+        self.decoder_params = []
+        if self.train_decoder:
+            if (
+                self.decoder_start_iter < 0
+                or self.decoder_start_iter >= self.cfg.max_iter
+            ):
+                raise ValueError(
+                    "vae_decoder.start_iter must be within the training run"
+                )
+            self.decoder_params = list(self.model.vae.decoder.parameters()) + list(
+                self.model.vae.post_quant_conv.parameters()
+            )
+        self.max_grad_norm = self.cfg.trainer.get("max_grad_norm", None)
+        if self.max_grad_norm is not None and (
+            not np.isfinite(self.max_grad_norm) or self.max_grad_norm <= 0
+        ):
+            raise ValueError("trainer.max_grad_norm must be finite and positive")
+
         # Optimizer !should be defined after input layer is adapted
         lr = self.cfg.lr
-        self.optimizer = Adam(self.model.unet.parameters(), lr=lr)
+        groups = [{"params": list(self.model.unet.parameters()), "lr": lr}]
+        if self.train_decoder:
+            decoder_lr = float(decoder_cfg.get("lr", lr * 0.1))
+            if not np.isfinite(decoder_lr) or decoder_lr <= 0:
+                raise ValueError("vae_decoder.lr must be finite and positive")
+            groups.append({"params": self.decoder_params, "lr": decoder_lr})
+        self.optimizer = Adam(groups, lr=lr)
 
         # LR scheduler
         lr_func = IterExponential(
@@ -114,8 +181,12 @@ class ApDepthTrainer:
 
         # Loss
         self.loss = get_loss(loss_name=self.cfg.loss.name, **self.cfg.loss.kwargs)
-        self.l1_loss = get_loss(loss_name=self.cfg.l1_loss.name, **self.cfg.l1_loss.kwargs)
-        self.latent_freq_loss = get_loss(loss_name=self.cfg.latent_freq_loss.name, ** self.cfg.latent_freq_loss.kwargs)
+        self.l1_loss = get_loss(
+            loss_name=self.cfg.l1_loss.name, **self.cfg.l1_loss.kwargs
+        )
+        self.latent_freq_loss = get_loss(
+            loss_name=self.cfg.latent_freq_loss.name, **self.cfg.latent_freq_loss.kwargs
+        )
         self.gradual_loss_transition = self.cfg.latent_freq_loss.get(
             "gradual_transition", False
         )
@@ -127,12 +198,20 @@ class ApDepthTrainer:
         self.far_weight = float(far_cfg.get("weight", 0.5))
         if self.far_enabled:
             if not np.isfinite(self.far_weight) or self.far_weight <= 0:
-                raise ValueError("far_depth_supervision.weight must be finite and positive")
+                raise ValueError(
+                    "far_depth_supervision.weight must be finite and positive"
+                )
             norm = self.cfg.depth_normalization
-            if not (norm.type == "scale_shift_depth" and norm.clip
-                    and norm.norm_min == -1.0 and norm.norm_max == 1.0):
-                raise ValueError("Far supervision requires clipped linear depth in [-1, 1]")
-        
+            if not (
+                norm.type == "scale_shift_depth"
+                and norm.clip
+                and norm.norm_min == -1.0
+                and norm.norm_max == 1.0
+            ):
+                raise ValueError(
+                    "Far supervision requires clipped linear depth in [-1, 1]"
+                )
+
         # Eval metrics
         self.metric_funcs = [getattr(metric, _met) for _met in cfg.eval.eval_metrics]
         self.train_metrics = MetricTracker(
@@ -142,6 +221,20 @@ class ApDepthTrainer:
             "far_loss",
             "far_pixel_ratio",
             "far_latent_ratio",
+            *(
+                [
+                    "latent_mse",
+                    "pixel_l1",
+                    "gradient_loss",
+                    "sdwt_loss",
+                    "sdwt_weight",
+                    "latent_weight",
+                    "pixel_weight",
+                    "gradient_weight",
+                ]
+                if self.stage2_loss is not None
+                else []
+            ),
         )
         self.val_metrics = MetricTracker(*[m.__name__ for m in self.metric_funcs])
 
@@ -188,10 +281,19 @@ class ApDepthTrainer:
         self.model.unet.conv_in = _new_conv_in
         logging.info("Unet conv_in layer is replaced")
         # replace config
-        self.model.unet.config["in_channels"] = 8
+        self.model.unet.register_to_config(in_channels=8)
         logging.info("Unet config is updated")
         return
-    
+
+    def _set_training_mode(self):
+        self.model.unet.train()
+        self.model.vae.eval()
+        active = self.train_decoder and self.effective_iter >= self.decoder_start_iter
+        for param in self.decoder_params:
+            param.requires_grad_(active)
+        self.model.vae.decoder.train(active)
+        self.model.vae.post_quant_conv.train(active)
+
     def train(self, t_end=None):
         logging.info("Start training")
 
@@ -206,14 +308,14 @@ class ApDepthTrainer:
 
         self.train_metrics.reset()
         accumulated_step = 0
-        
+
         for epoch in range(self.epoch, self.max_epoch + 1):
             self.epoch = epoch
             logging.debug(f"epoch: {self.epoch}")
 
             # Skip previous batches when resume
             for batch in skip_first_batches(self.train_loader, self.n_batch_in_epoch):
-                self.model.unet.train()
+                self._set_training_mode()
                 # >>> With gradient accumulation >>>
                 # Get data
                 rgb = batch["rgb_norm"].to(device)
@@ -226,7 +328,9 @@ class ApDepthTrainer:
                         far_mask = batch["known_far_mask"].to(device).bool()
                         far_mask = far_mask & ~valid_mask_for_latent
                     else:
-                        far_mask = torch.zeros_like(valid_mask_for_latent, dtype=torch.bool)
+                        far_mask = torch.zeros_like(
+                            valid_mask_for_latent, dtype=torch.bool
+                        )
                     depth_gt_for_latent, valid_mask_down, far_mask_down, _ = (
                         prepare_far_supervision(
                             depth_gt_for_latent, valid_mask_for_latent, far_mask
@@ -238,12 +342,12 @@ class ApDepthTrainer:
                     raise NotImplementedError
 
                 batch_size = rgb.shape[0]
-                
+
                 with torch.no_grad():
                     # Encode image
                     rgb_latent = self.model.encode_rgb(rgb)  # [B, 4, h, w]
                     # Encode DA2 depth
-                    depth_da2_latent = self.model.encode_rgb(depth_da2) # [B, 4, h, w]
+                    depth_da2_latent = self.model.encode_rgb(depth_da2)  # [B, 4, h, w]
                     # Encode GT depth
                     gt_depth_latent = self.encode_depth(
                         depth_gt_for_latent
@@ -264,7 +368,7 @@ class ApDepthTrainer:
                 ).sample  # [B, 4, h, w]
                 if torch.isnan(depth_pred).any():
                     logging.warning("model_pred contains NaN.")
-                
+
                 # Decode depth
                 depth = self.model.decode_depth(depth_pred)
                 depth_gt_for_loss = depth_gt_for_latent
@@ -272,21 +376,38 @@ class ApDepthTrainer:
                 torch.cuda.empty_cache()
 
                 loss, freq_loss, freq_loss_weight, far_loss = self._compute_depth_loss(
-                    depth_pred, gt_depth_latent, depth, depth_gt_for_loss,
-                    valid_mask_down, valid_mask_for_latent, far_mask_down, far_mask,
+                    depth_pred,
+                    gt_depth_latent,
+                    depth,
+                    depth_gt_for_loss,
+                    valid_mask_down,
+                    valid_mask_for_latent,
+                    far_mask_down,
+                    far_mask,
                 )
                 self.train_metrics.update("loss", loss.item())
                 self.train_metrics.update("latent_freq_loss", freq_loss.item())
                 self.train_metrics.update("freq_loss_weight", freq_loss_weight)
                 self.train_metrics.update("far_loss", far_loss.item())
-                self.train_metrics.update("far_pixel_ratio", far_mask.float().mean().item())
-                self.train_metrics.update("far_latent_ratio", far_mask_down.float().mean().item())
+                self.train_metrics.update(
+                    "far_pixel_ratio", far_mask.float().mean().item()
+                )
+                self.train_metrics.update(
+                    "far_latent_ratio", far_mask_down.float().mean().item()
+                )
 
                 loss = loss / self.gradient_accumulation_steps
                 loss.backward()
                 accumulated_step += 1
 
-                del depth, depth_pred, unet_input, text_embed, depth_da2_latent, rgb_latent
+                del (
+                    depth,
+                    depth_pred,
+                    unet_input,
+                    text_embed,
+                    depth_da2_latent,
+                    rgb_latent,
+                )
                 torch.cuda.empty_cache()
 
                 self.n_batch_in_epoch += 1
@@ -294,6 +415,17 @@ class ApDepthTrainer:
 
                 # Perform optimization step
                 if accumulated_step >= self.gradient_accumulation_steps:
+                    if self.max_grad_norm is not None:
+                        torch.nn.utils.clip_grad_norm_(
+                            [
+                                p
+                                for group in self.optimizer.param_groups
+                                for p in group["params"]
+                                if p.requires_grad
+                            ],
+                            self.max_grad_norm,
+                            error_if_nonfinite=True,
+                        )
                     self.optimizer.step()
                     self.lr_scheduler.step()
                     self.optimizer.zero_grad()
@@ -306,10 +438,7 @@ class ApDepthTrainer:
                     loss_to_log = accumulated_metrics["loss"]
 
                     tb_logger.log_dic(
-                        {
-                            f"train/{k}": v
-                            for k, v in accumulated_metrics.items()
-                        },
+                        {f"train/{k}": v for k, v in accumulated_metrics.items()},
                         global_step=self.effective_iter,
                     )
                     tb_logger.writer.add_scalar(
@@ -351,44 +480,82 @@ class ApDepthTrainer:
             self.n_batch_in_epoch = 0
 
     def _compute_depth_loss(
-        self, pred_latent, target_latent, pred_depth, target_depth,
-        valid_latent, valid_pixel, far_latent, far_pixel,
+        self,
+        pred_latent,
+        target_latent,
+        pred_depth,
+        target_depth,
+        valid_latent,
+        valid_pixel,
+        far_latent,
+        far_pixel,
     ):
         # Preserve the original valid-GT objective and its normalization.
-        freq_loss_weight = self._get_frequency_loss_weight()
-        reconstruction_loss_weight = 1.0 - freq_loss_weight
-
         reconstruction_loss = pred_latent.new_zeros(())
         freq_loss = pred_latent.new_zeros(())
-        if reconstruction_loss_weight > 0:
+        freq_loss_weight = self._get_frequency_loss_weight()
+        if self.stage2_loss is None:
+            reconstruction_loss_weight = 1.0 - freq_loss_weight
+        else:
+            reconstruction_loss_weight = 0.0
+
+        if self.stage2_loss is None and reconstruction_loss_weight > 0:
             reconstruction_loss = masked_loss(
                 self.loss, pred_latent.float(), target_latent.float(), valid_latent
             )
             reconstruction_loss = reconstruction_loss + masked_loss(
                 self.l1_loss, pred_depth.float(), target_depth.float(), valid_pixel
             )
-        if freq_loss_weight > 0:
+        if self.stage2_loss is None and freq_loss_weight > 0:
             freq_loss = self.latent_freq_loss(
                 pred_latent.float(), target_latent.float(), valid_latent
             )
 
         loss = reconstruction_loss_weight * reconstruction_loss
         loss = loss + (
-            freq_loss_weight
-            * self.cfg.latent_freq_loss.get("lambda", 1.0)
-            * freq_loss
+            freq_loss_weight * self.cfg.latent_freq_loss.get("lambda", 1.0) * freq_loss
         )
+
+        if self.stage2_loss is not None:
+            loss, terms = self.stage2_loss(
+                pred_latent,
+                target_latent,
+                pred_depth,
+                target_depth,
+                valid_latent,
+                valid_pixel,
+                self.effective_iter,
+            )
+            if freq_loss_weight > 0:
+                freq_loss = self.latent_freq_loss(
+                    pred_latent.float(), target_latent.float(), valid_latent
+                )
+                loss = loss + freq_loss_weight * freq_loss
+            for key, value in terms.items():
+                self.train_metrics.update(key, value)
 
         far_loss = pred_latent.new_zeros(())
         if self.far_enabled:
             # Maintain an absolute far-depth target even during FFT refinement:
             # spectral magnitude alone cannot distinguish opposite-sign targets.
-            far_loss = masked_loss(self.loss, pred_latent.float(), target_latent.float(), far_latent)
-            far_loss = far_loss + masked_loss(self.l1_loss, pred_depth.float(), target_depth.float(), far_pixel)
+            far_loss = masked_loss(
+                self.loss, pred_latent.float(), target_latent.float(), far_latent
+            )
+            far_loss = far_loss + masked_loss(
+                self.l1_loss, pred_depth.float(), target_depth.float(), far_pixel
+            )
             loss = loss + self.far_weight * far_loss
         return loss, freq_loss, freq_loss_weight, far_loss
 
     def _get_frequency_loss_weight(self):
+        if self.stage2_loss is not None:
+            if not self.sdwt_frequency_enabled:
+                return 0.0
+            progress = (
+                self.effective_iter - self.sdwt_frequency_start_iter
+            ) / self.sdwt_frequency_ramp_iters
+            progress = min(max(progress, 0.0), 1.0)
+            return self.sdwt_frequency_final_weight * progress
         if not self.gradual_loss_transition:
             return float(self.effective_iter > self.FREQUENCY_LOSS_START_ITER)
 
@@ -512,6 +679,8 @@ class ApDepthTrainer:
         save_to_dir: str = None,
     ):
         self.model.to(self.device)
+        self.model.unet.eval()
+        self.model.vae.eval()
         metric_tracker.reset()
 
         # Generate seed sequence for consistent evaluation
@@ -624,6 +793,25 @@ class ApDepthTrainer:
         unet_path = os.path.join(ckpt_dir, "unet")
         self.model.unet.save_pretrained(unet_path, safe_serialization=True)
         logging.info(f"UNet is saved to: {unet_path}")
+        if self.has_finetuned_vae:
+            self.model.vae.save_pretrained(
+                os.path.join(ckpt_dir, "vae"), safe_serialization=True
+            )
+        with open(
+            os.path.join(ckpt_dir, "apdepth_training.json"), "w", encoding="utf-8"
+        ) as f:
+            json.dump(
+                {
+                    "base_model": self.cfg.model.pretrained_path,
+                    "has_finetuned_vae": self.has_finetuned_vae,
+                    "depth_normalization": OmegaConf.to_container(
+                        self.cfg.depth_normalization
+                    ),
+                    "effective_iter": self.effective_iter,
+                },
+                f,
+                indent=2,
+            )
 
         if save_train_state:
             state = {
@@ -663,6 +851,24 @@ class ApDepthTrainer:
         self.model.unet.load_state_dict(state_dict)
         self.model.unet.to(self.device)
         logging.info(f"UNet parameters are loaded from {_model_path}")
+
+        vae_path = os.path.join(ckpt_path, "vae", "diffusion_pytorch_model.safetensors")
+        metadata_path = os.path.join(ckpt_path, "apdepth_training.json")
+        metadata = {}
+        if os.path.isfile(metadata_path):
+            with open(metadata_path, encoding="utf-8") as f:
+                metadata = json.load(f)
+        requires_vae = metadata.get("has_finetuned_vae", False) or (
+            load_trainer_state and self.train_decoder
+        )
+        if requires_vae and not os.path.isfile(vae_path):
+            raise FileNotFoundError(
+                f"Checkpoint requires its fine-tuned VAE: {vae_path}"
+            )
+        if os.path.isfile(vae_path):
+            self.model.vae.load_state_dict(load_file(vae_path, device=str(self.device)))
+            self.has_finetuned_vae = True
+            logging.info(f"Fine-tuned VAE loaded from {vae_path}")
 
         # Load training states
         if load_trainer_state:

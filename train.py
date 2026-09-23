@@ -63,7 +63,7 @@ if "__main__" == __name__:
     parser.add_argument( 
         "--config",
         type=str,
-        default="config/train_apdepth.yaml",
+        default="config/train_sd2_sdwt.yaml",
         help="Path to config file.",
     )
     parser.add_argument(
@@ -77,7 +77,7 @@ if "__main__" == __name__:
     )
     parser.add_argument(
         "--init_checkpoint", type=str, default=None,
-        help="Initialize UNet from a safetensors checkpoint directory with new config, optimizer and steps.",
+        help="Initialize UNet (and saved VAE, if present) with new config, optimizer and steps.",
     )
     parser.add_argument("--no_cuda", action="store_true", help="Do not use cuda.")
     parser.add_argument(
@@ -147,6 +147,11 @@ if "__main__" == __name__:
     else:
         # Run from start
         cfg = recursive_load_config(args.config)
+        if cfg.get("initialization") == "base_sd2" and args.init_checkpoint is not None:
+            parser.error(
+                "This config trains directly from original SD2; omit "
+                "--init_checkpoint. Use --resume_run only to resume this run."
+            )
         # Full job name
         pure_job_name = os.path.basename(args.config).split(".")[0]
         # Add time prefix
@@ -344,6 +349,15 @@ if "__main__" == __name__:
     model = ApDepthPipeline.from_pretrained(
         os.path.join(base_ckpt_dir, cfg.model.pretrained_path), **_pipeline_kwargs
     )
+    if cfg.get("initialization") == "base_sd2":
+        if (
+            model.unet.config.in_channels != 4
+            or model.unet.config.cross_attention_dim != 1024
+        ):
+            raise ValueError(
+                "Direct SD2 training requires an original 4-channel SD2 U-Net "
+                "with cross_attention_dim=1024, not a depth checkpoint."
+            )
 
     # -------------------- Trainer --------------------
     # Exit time

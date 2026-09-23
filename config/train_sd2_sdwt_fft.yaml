@@ -1,0 +1,15 @@
+# Direct SD2.1 fine-tuning with reconstruction, gradient, FFT and SDWT.
+# This is one continuous Stage-2 run and does not load a Stage-1 checkpoint.
+base_config:
+- config/train_sd2_sdwt.yaml
+
+# During iterations 0-8000, learn the basic depth mapping with latent MSE,
+# pixel L1 and gradient loss. From 8000-12000, progressively introduce both
+# SDWT (configured in train_sd2_sdwt.yaml) and this auxiliary FFT loss.
+# Afterwards FFT remains deliberately small so that strict frequency matching
+# does not overpower SDWT's tolerance to local edge misalignment.
+sdwt_frequency_loss:
+  enabled: true
+  start_iter: 8000
+  ramp_iters: 4000
+  final_weight: 0.2
