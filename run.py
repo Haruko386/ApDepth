@@ -25,16 +25,14 @@ from glob import glob
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from PIL import Image
 from tqdm.auto import tqdm
+from torchvision import transforms
 
 from apdepth import ApDepthPipeline
+from apdepth.util.checkpoint import load_training_components
 
 EXTENSION_LIST = [".jpg", ".jpeg", ".png"]
-
-from torchvision import transforms
 
 
 if "__main__" == __name__:
@@ -56,6 +54,14 @@ if "__main__" == __name__:
         type=str,
         required=True,
         help="Path to the input image folder.",
+    )
+    parser.add_argument(
+        "--training_checkpoint",
+        default=None,
+        help=(
+            "Stage-2 checkpoint to load over --checkpoint (original SD2 base); "
+            "includes saved VAE."
+        ),
     )
 
     parser.add_argument(
@@ -135,6 +141,8 @@ if "__main__" == __name__:
     half_precision = args.half_precision
 
     processing_res = args.processing_res
+    if args.training_checkpoint and processing_res is None:
+        processing_res = 0
     match_input_res = not args.output_processing_res
     if 0 == processing_res and match_input_res is False:
         logging.warning(
@@ -204,8 +212,13 @@ if "__main__" == __name__:
         dtype = torch.float32
         variant = None
 
+    components = (
+        load_training_components(args.training_checkpoint, dtype)
+        if args.training_checkpoint
+        else {}
+    )
     pipe: ApDepthPipeline = ApDepthPipeline.from_pretrained(
-        checkpoint_path, variant=variant, torch_dtype=dtype
+        checkpoint_path, variant=variant, torch_dtype=dtype, **components
     )
     # unet = UNet2DConditionModel.from_pretrained(os.path.join(checkpoint_path, f'unet'))
     # pipe.unet = unet
