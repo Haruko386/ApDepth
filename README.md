@@ -1,6 +1,6 @@
 <div align="center">
   <h1><strong>ApDepth</strong></h1>
-  <h3><strong>Aiming for Precise Monocular Depth Estimation Based on Diffusion Models</strong></h3>
+  <h2><strong>Aiming for Precise Monocular Depth Estimation Based on Diffusion Models</strong></h2>
 </div>
 
 <p align="center">
@@ -16,20 +16,18 @@
 
 ![ApDepth monocular depth estimation examples](doc/cover.png)
 
-## Overview
-
-**ApDepth** turns Stable Diffusion 2.1 into a deterministic, single-step
+We present **ApDepth**, a deterministic, single-step
 monocular depth estimator. It combines a frozen Depth Anything V2 prior with a
 fine-tuned diffusion U-Net to recover accurate scene geometry and crisp object
 boundaries without iterative denoising.
 
 > [!IMPORTANT]
 >
-> ApDepth builds on [**Marigold**](https://marigoldmonodepth.github.io), the
-> CVPR 2024 Best Paper [*Repurposing Diffusion-Based Image Generators for
-> Monocular Depth Estimation*](https://arxiv.org/abs/2312.02145).
+> This repository builds on [**Marigold**](https://marigoldmonodepth.github.io), the
+> CVPR 2024 Best Paper [***Repurposing Diffusion-Based Image Generators for
+> Monocular Depth Estimation***](https://arxiv.org/abs/2312.02145).
 
-## News
+## 📢 News
 
 - **2026-09-22:** Preparing **ApDepth V2-1** with direct SD2.1 fine-tuning,
   SDWT and optional FFT refinement.
@@ -42,23 +40,23 @@ boundaries without iterative denoising.
 - **2025-08-10:** Trying to make some optimizations in Feature Expression.
 - **2025-05-08:** Clone `Marigold` to local.
 
-## Quick start
+## 🚀 Usage
 
 Try ApDepth in the [live demo](https://huggingface.co/spaces/developy/ApDepth),
 browse the [project gallery](https://haruko386.github.io/research), or run it
 locally using the instructions below.
 
-### Requirements
+## 🛠️ Setup
 
 The model was trained on:
 
-- Ubuntu 22.04 LTS, Python 3.12.9,  CUDA 11.8, `NVIDIA RTX 6000 Ada Generation`
+- Ubuntu 22.04 LTS, Python 3.12.9,  CUDA 11.8, **`NVIDIA RTX 6000 Ada Generation`**
 
 Inference was tested on:
 
-- Ubuntu 22.04 LTS, Python 3.12.9,  CUDA 11.8, `NVIDIA GeForce RTX 4090`
+- Ubuntu 22.04 LTS, Python 3.12.9,  CUDA 11.8, **`NVIDIA GeForce RTX 5090`**
 
-#### Windows
+### 🪧 A Note for Windows users
 
 We recommend running the code in WSL2:
 
@@ -66,7 +64,7 @@ We recommend running the code in WSL2:
 1. Install CUDA support for WSL following [installation guide](https://docs.nvidia.com/cuda/wsl-user-guide/index.html#cuda-support-for-wsl-2).
 1. Find your drives in `/mnt/<drive letter>/`; check [WSL FAQ](https://learn.microsoft.com/en-us/windows/wsl/faq#how-do-i-access-my-c--drive-) for more details. Navigate to the working directory of choice. 
 
-### Installation
+### 📦 Repository
 
 Clone the repository (requires git):
 
@@ -90,7 +88,7 @@ pip install -r requirements.txt
 > Keep the environment activated before running the inference script. 
 > Activate the environment again after restarting the terminal session.
 
-### Docker
+### 🐳 Docker Setup
 
 For a streamlined setup, we provide a Docker environment that pre-installs all necessary dependencies, including PyTorch, CUDA, and evaluation tools.
 
@@ -115,7 +113,7 @@ docker run --gpus all -it --rm \
 
 Inside the container, the `apdepth` Conda environment is activated automatically.
 
-## Inference
+## 🖼️ Inference on images
 
 ### Prepare images
 
@@ -138,7 +136,7 @@ python run.py \
 
 You can find all results in `output/example-1`. Enjoy!
 
-### Inference options
+### ⚙️ Inference options
 
 The default settings are optimized for the best result. However, the behavior of the code can be customized:
 
@@ -154,7 +152,7 @@ The default settings are optimized for the best result. However, the behavior of
 - `--color_map`: [Colormap](https://matplotlib.org/stable/users/explain/colors/colormaps.html) used to colorize the depth prediction. Default: Spectral. Set to `None` to skip colored depth map generation.
 - `--apple_silicon`: Use Apple Silicon MPS acceleration.
 
-## Evaluation
+## 🔬 Evaluation
 
 Install additional dependencies:
 
@@ -194,7 +192,7 @@ You can get the result under `output/eval`
 
 
 
-## Training
+## 🏋️ Training
 
 Three training methods are retained. The mixed SDWT + FFT method is the
 recommended recipe; the SDWT-only method is kept for controlled comparison, and the
@@ -231,7 +229,7 @@ Prepare [Hypersim](https://github.com/apple/ml-hypersim) and [Virtual KITTI 2](h
 
 ------------
 
-### Method 1: direct SD2 training with SDWT + FFT (recommended)
+### 🥇 Method 1: direct SD2 training with SDWT + FFT (recommended)
 
 This method starts from the original SD2.1 weights. During iterations 0-8,000,
 it learns the basic depth mapping with latent MSE, pixel L1 and gradient loss.
@@ -256,7 +254,7 @@ python train.py \
     --resume_run output/train_sd2_sdwt_fft/checkpoint/latest --no_wandb
 ```
 
-### Method 2: direct SD2 training with SDWT only
+### 🥈 Method 2: direct SD2 training with SDWT only
 
 This method uses the same original SD2.1 initialization, reconstruction-loss
 schedule and VAE decoder adaptation as Method 1, but leaves latent FFT disabled.
@@ -277,7 +275,7 @@ For both direct-SD2 methods, `BASE_CKPT_DIR/stable-diffusion-2-1` must contain
 the original SD2.1 Diffusers pipeline. Their checkpoints save both the U-Net and
 the fine-tuned VAE.
 
-### Method 3: legacy Stage 1 + ApDepth/FFT training (ApDepth v2-0)
+### 🥉 Method 3: legacy Stage 1 + ApDepth/FFT training (ApDepth v2-0)
 
 First complete the feature-alignment Stage 1 training. Stage 1 is maintained
 separately in
@@ -313,7 +311,7 @@ Resume from a checkpoint, e.g.
 python train.py --resume_run output/train_apdepth/checkpoint/latest --no_wandb
 ```
 
-### Inference after Method 1 or Method 2
+### 🧪 Inference after Method 1 or Method 2
 
 Direct-SD2 checkpoints are training-component checkpoints, so inference combines
 the original SD2.1 pipeline with the saved U-Net and VAE. For Method 1:
@@ -330,7 +328,7 @@ path. `infer.py` also accepts `--training_checkpoint` for dataset evaluation.
 
 ------------
 
-## Optional post-training after Stage 2
+## 🎟️ Optional post-training after Stage 2
 
 **Start this step only after Stage 2 training has finished.** The new VKITTI
 far-depth supervision feature is enabled by `config/train_sky_finetune.yaml` for
@@ -395,7 +393,7 @@ Monitor `train/far_loss`, `train/far_pixel_ratio` and `train/far_latent_ratio`.
 Compare KITTI and NYU against the completed Stage 2 model after post-training; this change
 alone does not establish a metric improvement.
 
-## Evaluating trained checkpoints
+## 🛍️ Evaluating trained checkpoints
 
 The new direct-SD2 recipe saves both U-Net and VAE; use `--training_checkpoint`
 as shown above to load them together. The following instructions apply to legacy
@@ -413,11 +411,11 @@ alone is not a complete inference pipeline. Then refer to [evaluation](#evaluati
 
 
 
-## Contributing
+## ✏️ Contributing
 
 Please refer to [this](CONTRIBUTING.md) instruction.
 
-## Troubleshooting
+## 🤔 Troubleshooting
 
 | Problem                                                                                                                     | Solution                                                                  |
 | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
@@ -430,7 +428,7 @@ Please refer to [this](CONTRIBUTING.md) instruction.
 
 
 
-## Citation
+## 🎓 Citation
 Please cite our paper:
 
 ```bibtex
@@ -442,7 +440,7 @@ Please cite our paper:
 }
 ```
 
-## License
+## 🎫 License
 
 This work is licensed under the Apache License, Version 2.0 (as defined in the [LICENSE](LICENSE.txt)).
 
