@@ -192,43 +192,118 @@ class DepthAnythingV2(nn.Module):
         depth = F.interpolate(depth[:, None], (h, w), mode="bilinear", align_corners=True)[0, 0]
         
         return depth.cpu().numpy()
+
+    @staticmethod
+    def _prepare_project_rgb_for_dinov2(
+        images: torch.Tensor, model_dtype: torch.dtype
+    ) -> torch.Tensor:
+        """Convert ApDepth RGB tensors to the input domain expected by DINOv2.
+
+        ApDepth creates ``rgb_norm`` in ``src/dataset/base_depth_dataset.py`` as
+        ``rgb / 255 * 2 - 1``, so this method receives RGB in [-1, 1].  The
+        official DA2 ``image2tensor`` path below instead starts from RGB in
+        [0, 1] and applies ImageNet mean/std normalization.  Passing ApDepth's
+        [-1, 1] tensor directly to DINOv2 skips both conversions and is the
+        input-range mismatch fixed here.
+        """
+        if not images.is_floating_point():
+            raise TypeError(f"Expected floating-point RGB, got {images.dtype}")
+
+        images_01 = ((images.to(dtype=model_dtype) + 1.0) * 0.5).clamp_(0.0, 1.0)
+        mean = images_01.new_tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+        std = images_01.new_tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+        return (images_01 - mean) / std
+
+    @staticmethod
+    def _relative_disparity_to_apdepth_range(
+        disparity: torch.Tensor, output_dtype: torch.dtype
+    ) -> torch.Tensor:
+        """Map DA2 relative disparity to ApDepth's depth/VAE convention.
+
+        DA2's relative model emits an unbounded disparity-like value: larger is
+        nearer.  ApDepth's ``ScaleShiftDepthNormalizer`` uses [-1, 1] with
+        ``far_plane_at_max=True``: -1 is near and +1 is far.  SD2's VAE also
+        expects an image-like tensor in [-1, 1].  Returning raw DA2 output from
+        ``infer_batch`` therefore mismatched both its direction and range.
+
+        The same 2%/98% robust per-image normalization used for the training GT
+        removes DA2's arbitrary relative scale.  The subtraction from one then
+        changes disparity (near-is-large) into depth (far-is-large).
+        """
+        disparity_fp32 = disparity.float()
+        flat = disparity_fp32.flatten(1)
+        low_q = torch.quantile(flat, 0.02, dim=1).view(-1, 1, 1, 1)
+        high_q = torch.quantile(flat, 0.98, dim=1).view(-1, 1, 1, 1)
+        disparity_01 = (disparity_fp32 - low_q) / (
+            high_q - low_q
+        ).clamp_min(1e-6)
+        disparity_01 = disparity_01.clamp_(0.0, 1.0)
+
+        depth_01 = 1.0 - disparity_01
+        depth_m11 = depth_01.mul(2.0).sub(1.0)
+        return depth_m11.to(dtype=output_dtype)
     
     @torch.no_grad()
     def infer_batch(self, images: torch.Tensor):
+        """Build a three-channel DA2 prior compatible with ApDepth's SD2 VAE.
+
+        Args:
+            images: ApDepth RGB tensor [B, 3, H, W] in [-1, 1].
+
+        Returns:
+            Relative depth [B, 3, H, W] in [-1, 1], where -1 is near and +1
+            is far.  This is a relative prior; it is not metric depth in metres.
+        """
         assert images.ndim == 4 and images.size(1) == 3, \
             f"Expect input shape [B,3,H,W], but got {images.shape}"
 
-        device = next(self.parameters()).device
-        images = images.to(device)
+        model_parameter = next(self.parameters())
+        device = model_parameter.device
+        output_dtype = images.dtype
+        # Resize in fp32 because CUDA antialiased bicubic kernels are not
+        # available for every fp16/bf16 PyTorch build. DINO input is cast to
+        # the actual DA2 weight dtype after resizing.
+        images = images.to(device=device, dtype=torch.float32)
 
-        B, C, H, W = images.shape
+        _, _, H, W = images.shape
 
         new_H = int((H + 13) // 14 * 14)
         new_W = int((W + 13) // 14 * 14)
 
         if new_H != H or new_W != W:
-            images_resized = F.interpolate(images, size=(new_H, new_W), mode='bilinear', align_corners=True)
-        else:
-            images_resized = images
+            images = F.interpolate(
+                images,
+                size=(new_H, new_W),
+                mode="bicubic",
+                align_corners=False,
+                antialias=True,
+            )
+
+        # RANGE CONTRACT 1: ApDepth [-1, 1] RGB -> DA2/DINOv2 ImageNet input.
+        images_dinov2 = self._prepare_project_rgb_for_dinov2(
+            images, model_dtype=model_parameter.dtype
+        )
 
         patch_h, patch_w = new_H // 14, new_W // 14
 
         features = self.pretrained.get_intermediate_layers(
-            images_resized, 
+            images_dinov2,
             self.intermediate_layer_idx[self.encoder],
-            return_class_token=True
+            return_class_token=True,
         )
 
-        depth = self.depth_head(features, patch_h, patch_w)
-        depth = F.relu(depth)
+        # DA2 relative output is disparity-like (near is large), not metric depth.
+        disparity = F.relu(self.depth_head(features, patch_h, patch_w))
+        disparity = F.interpolate(
+            disparity, size=(H, W), mode="bilinear", align_corners=False
+        )
 
-        depth = F.interpolate(depth, size=(H, W), mode="bilinear", align_corners=True)
+        # RANGE CONTRACT 2: raw DA2 disparity -> ApDepth/VAE depth in [-1, 1].
+        depth_m11 = self._relative_disparity_to_apdepth_range(
+            disparity, output_dtype=output_dtype
+        )
 
-        # return depth  # [B,1,H,W]
-
-        depth_3c = depth.repeat(1, 3, 1, 1)   # [B,3,H,W]
-
-        return depth_3c
+        return depth_m11.repeat(1, 3, 1, 1)
 
     
     
