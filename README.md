@@ -432,11 +432,13 @@ Please refer to [this](CONTRIBUTING.md) instruction.
 Please cite our paper:
 
 ```bibtex
-@InProceedings{wang26apdepth,
-      title={ApDepth: Aiming for Precise Monocular Depth Estimation Based on Diffusion Models},
-      author={Jiawei Wang, Mingbo Lei, Haoze Shou, Yusu Liang and Yuan Shuai},
-      booktitle = {Arxiv},
-      year={2026}
+@misc{wang2026apdepth,
+  title  = {{ApDepth}: Aiming for Precise Monocular Depth Estimation Based on Diffusion Models},
+  author = {Wang, Jiawei and Lei, Mingbo and Yao, Liang and Li, Jiayi and Lu, Tianyu and Chen, Yibo},
+  year   = {2026},
+  doi    = {10.2139/ssrn.7604741},
+  url    = {https://doi.org/10.2139/ssrn.7604741},
+  note   = {SSRN Preprint}
 }
 ```
 
