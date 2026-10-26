@@ -17,7 +17,7 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 > We present **ApDepth**, a deterministic single-step diffusion framework for monocular depth estimation. Built upon Marigold (derived from Stable Diffusion) and fine-tuned on synthetic datasets (Hypersim and Virtual KITTI), ApDepth overcomes the feature representation bottlenecks of standard diffusion models. Ultimately, our framework achieves **highly competitive geometric accuracy** and **exceptional object edge refinement**, all while delivering significantly accelerated inference speeds.
 
 ## 📢 News
-- **2026-04-28** The paper was released on [**SSRN**](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7604741)
+- **2026-10-14** The paper was released on [**SSRN**](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7604741)
 - **2026-04-06:** `ApDepth V2-0` is released!
 - **2026-04-03:** We officially release the complete code for **ApDepth**! The repository now includes the full coarse-to-fine two-stage training pipeline and evaluation scripts.
 - **2026-01-15:** We successfully introduce a spatial-preserving **Conv Adapter** and a **Cosine Similarity Loss** to enhance feature alignment, alongside a **Pixel-level $L_1$ Loss** to establish an accurate global metric scale.
