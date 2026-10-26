@@ -2,10 +2,10 @@
 
 This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVPR 2024 Best Paper: [**Repurposing Diffusion-Based Image Generators for Monocular Depth Estimation**](https://arxiv.org/abs/2312.02145)
 
-[![Website](doc/badges/badge-website.svg)](https://haruko386.github.io/research)
-[![License](https://img.shields.io/badge/License-Apache--2.0-929292)](https://www.apache.org/licenses/LICENSE-2.0)
-[![Hugging Face Model](https://img.shields.io/badge/🤗%20Hugging%20Face-Model-green)](https://huggingface.co/developy/ApDepth)
-[![Hugging Face Demo](https://img.shields.io/badge/🤗%20Hugging%20Face-Demo-purple)](https://huggingface.co/spaces/developy/ApDepth)
+[![Website](https://img.shields.io/badge/Website-ApDepth-64748B?style=flat-square)](https://haruko386.github.io/research)
+[![License](https://img.shields.io/badge/License-Apache--2.0-CBD5E1?style=flat-square)](https://www.apache.org/licenses/LICENSE-2.0)
+[![Hugging Face Model](https://img.shields.io/badge/🤗_Hugging_Face-Model-64748B?style=flat-square)](https://huggingface.co/developy/ApDepth)
+[![Hugging Face Demo](https://img.shields.io/badge/🤗_Hugging_Face-Demo-818CF8?style=flat-square)](https://huggingface.co/spaces/developy/ApDepth)
 
 [**Haruko386**](https://haruko386.github.io/),
 [Shuai Yuan](https://syjz.teacher.360eol.com/teacherBasic/preview?teacherId=23776),
@@ -17,6 +17,7 @@ This repository is based on [Marigold](https://marigoldmonodepth.github.io), CVP
 > We present **ApDepth**, a deterministic single-step diffusion framework for monocular depth estimation. Built upon Marigold (derived from Stable Diffusion) and fine-tuned on synthetic datasets (Hypersim and Virtual KITTI), ApDepth overcomes the feature representation bottlenecks of standard diffusion models. Ultimately, our framework achieves **highly competitive geometric accuracy** and **exceptional object edge refinement**, all while delivering significantly accelerated inference speeds.
 
 ## 📢 News
+- **2026-04-28** The paper was released on [**SSRN**](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7604741)
 - **2026-04-06:** `ApDepth V2-0` is released!
 - **2026-04-03:** We officially release the complete code for **ApDepth**! The repository now includes the full coarse-to-fine two-stage training pipeline and evaluation scripts.
 - **2026-01-15:** We successfully introduce a spatial-preserving **Conv Adapter** and a **Cosine Similarity Loss** to enhance feature alignment, alongside a **Pixel-level $L_1$ Loss** to establish an accurate global metric scale.
